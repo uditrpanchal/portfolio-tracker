@@ -15,6 +15,7 @@ A full-stack personal investment portfolio tracker with live market prices, mult
 ## ✨ Features
 
 - **Live prices** — auto-fetched from Yahoo Finance on every load and refresh
+- **Budget Planner** — Comprehensive monthly budgeting, daily expense logging with carry-forward calculations, charts, and CSV/PDF export
 - **Named portfolios** — create TFSA, FHSA, RRSP, or any custom account name
 - **Multi-currency** — per-portfolio currency selection (CAD, USD, EUR, GBP, JPY, AUD, CHF, INR, HKD) with real-time FX conversion on the All tab
 - **Dividends** — upcoming ex-dividend dates, annual rate/yield, YTD income, and projected annual income per position
@@ -33,6 +34,7 @@ portfolio-tracker/
 │   ├── src/
 │   │   ├── api/             # API client (typed fetch wrappers)
 │   │   ├── components/
+│   │   │   ├── Budget/      # Budget Planner (monthly & daily tracking, PDF/CSV exports)
 │   │   │   ├── Layout/      # Sidebar, Layout shell
 │   │   │   └── Portfolio/   # ManualTracker (main dashboard)
 │   │   ├── contexts/        # AuthContext, ThemeContext
@@ -162,6 +164,7 @@ cd client && npm run test:coverage
 ## 🗺️ Roadmap
 
 - [x] Automated test suite (Vitest + Supertest + mongodb-memory-server)
+- [x] Budget Planner — monthly categories, daily expense log, carry-forward, CSV & PDF export
 - [ ] CSV import for DRIP reinvestment trades (Wealthsimple export)
 - [ ] Historical performance chart (time-series portfolio value)
 - [ ] Dark/light mode per-component MUI integration

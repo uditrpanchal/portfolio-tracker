@@ -175,6 +175,9 @@ All authenticated routes require an `Authorization: Bearer <token>` header.
 }
 ```
 
+> **Note on Client-Side Features**  
+> Certain features like the **Budget Planner** currently rely entirely on browser `localStorage` (key: `pt_budget_v1`) to securely store daily expenses and monthly categorical budgets without involving the backend DB. Thus, there are no endpoints exposed here for creating/fetching budgets.
+
 ---
 
 ## ⚙️ Scripts

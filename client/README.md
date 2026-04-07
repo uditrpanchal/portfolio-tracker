@@ -19,6 +19,7 @@ client/
 │   ├── api/
 │   │   └── client.ts            # All typed fetch wrappers + TypeScript interfaces
 │   ├── components/
+│   │   ├── Budget/              # BudgetPlanner, helpers, and PDF/CSV export utilities
 │   │   ├── Layout/
 │   │   │   ├── Layout.tsx       # App shell, sidebar toggle, CSS variable–themed
 │   │   │   └── Sidebar.tsx      # Navigation links, theme picker, user info + logout
@@ -96,6 +97,7 @@ VITE_GOOGLE_CLIENT_ID=<your-google-oauth-client-id>
 | react-router-dom | 7.14.0 | Client-side routing |
 | @react-oauth/google | 0.13.4 | Google One-Tap OAuth |
 | lucide-react | 1.7.0 | Icons |
+| jspdf / jspdf-autotable | ^4.2.1 / ^5.0.7 | PDF Export (Budget Planner) |
 
 ---
 
@@ -121,6 +123,7 @@ npm run test:coverage   # V8 coverage report
 ## 🗺️ Roadmap
 
 - [x] Vitest unit tests for API client and AuthContext
+- [x] Budget Planner — monthly income/expense categories, daily expense log, carry-forward, donut chart, budget adherence bars, CSV & PDF export
 - [ ] Component tests for ManualTracker (positions table, charts)
 - [ ] Mobile-responsive table / card layout
 - [ ] CSV import (Wealthsimple export format)
