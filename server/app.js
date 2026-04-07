@@ -7,6 +7,7 @@ const portfolioRoutes = require('./routes/portfolios');
 const ratesRoutes     = require('./routes/rates');
 const mstarRoutes     = require('./routes/mstar');
 const dividendRoutes  = require('./routes/dividends');
+const transactionRoutes = require('./routes/transactions');
 
 const app = express();
 
@@ -28,6 +29,7 @@ app.use('/api/portfolios', portfolioRoutes);
 app.use('/api/rates',      ratesRoutes);
 app.use('/api/ratings',    mstarRoutes);
 app.use('/api/dividends',  dividendRoutes);
+app.use('/api/transactions', transactionRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

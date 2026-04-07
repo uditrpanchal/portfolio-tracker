@@ -40,7 +40,7 @@ router.get('/', async (req, res) => {
 // ── POST /api/tracker ─────────────────────────────────────────────────────────
 // Auto-fetches current price — do NOT accept currentPrice from client.
 router.post('/', async (req, res) => {
-  const { ticker, securityType, shares, purchasePrice, portfolioId } = req.body;
+  const { ticker, securityType, shares, purchasePrice, portfolioId, entryMethod } = req.body;
   try {
     const livePrice = await fetchPrice(ticker);
     if (!livePrice) {
@@ -57,6 +57,7 @@ router.post('/', async (req, res) => {
       shares,
       purchasePrice,
       currentPrice: livePrice,
+      entryMethod: entryMethod || 'Manual'
     });
     res.status(201).json(position);
   } catch (err) {
@@ -71,11 +72,13 @@ router.put('/:id', async (req, res) => {
     const position = await Position.findOne({ _id: req.params.id, userId: req.user.id });
     if (!position) return res.status(404).json({ message: 'Position not found' });
 
-    const { ticker, securityType, shares, purchasePrice } = req.body;
+    const { ticker, securityType, shares, purchasePrice, entryMethod, portfolioId } = req.body;
     if (ticker)                    position.ticker        = ticker.toUpperCase();
     if (securityType)              position.securityType  = securityType;
     if (shares      != null)       position.shares        = shares;
     if (purchasePrice != null)     position.purchasePrice = purchasePrice;
+    if (entryMethod)               position.entryMethod   = entryMethod;
+    if (portfolioId !== undefined) position.portfolioId   = portfolioId || null;
 
     // Always refresh the live price
     const livePrice = await fetchPrice(position.ticker);

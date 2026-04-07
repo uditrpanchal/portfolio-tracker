@@ -12,6 +12,8 @@ export interface AppTheme {
   accentRgb: string;
   /** Lighter tint of accent for text/link states */
   accentLight: string;
+  /** Text color when placed on top of the accent background */
+  accentText: string;
   /** Main page background */
   bg: string;
   /** Sidebar / dark overlay background (includes opacity) */
@@ -27,6 +29,7 @@ export const APP_THEMES: Record<string, AppTheme> = {
     accent: '#2563EB',
     accentRgb: '37, 99, 235',
     accentLight: '#60A5FA',
+    accentText: '#ffffff',
     bg: '#0A1628',
     sidebar: 'rgba(10,22,40,0.97)',
     elevated: '#1E293B',
@@ -37,6 +40,7 @@ export const APP_THEMES: Record<string, AppTheme> = {
     accent: '#7C3AED',
     accentRgb: '124, 58, 237',
     accentLight: '#A78BFA',
+    accentText: '#ffffff',
     bg: '#0C0A14',
     sidebar: 'rgba(12,10,20,0.97)',
     elevated: '#1A1428',
@@ -47,6 +51,7 @@ export const APP_THEMES: Record<string, AppTheme> = {
     accent: '#06B6D4',
     accentRgb: '6, 182, 212',
     accentLight: '#67E8F9',
+    accentText: '#080C18',
     bg: '#0A1B24',
     sidebar: 'rgba(10,27,36,0.97)',
     elevated: '#152532',
@@ -57,6 +62,7 @@ export const APP_THEMES: Record<string, AppTheme> = {
     accent: '#10B981',
     accentRgb: '16, 185, 129',
     accentLight: '#6EE7B7',
+    accentText: '#080C18',
     bg: '#0A1A12',
     sidebar: 'rgba(10,26,18,0.97)',
     elevated: '#14261A',
@@ -67,6 +73,7 @@ export const APP_THEMES: Record<string, AppTheme> = {
     accent: '#F59E0B',
     accentRgb: '245, 158, 11',
     accentLight: '#FCD34D',
+    accentText: '#080C18',
     bg: '#1C1008',
     sidebar: 'rgba(28,16,8,0.97)',
     elevated: '#2A1A0C',
@@ -77,6 +84,7 @@ export const APP_THEMES: Record<string, AppTheme> = {
     accent: '#E2E8F0',
     accentRgb: '226, 232, 240',
     accentLight: '#F8FAFC',
+    accentText: '#080C18',
     bg: '#000000',
     sidebar: 'rgba(0,0,0,0.98)',
     elevated: '#111111',
@@ -119,6 +127,7 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
     root.style.setProperty('--pt-accent', appTheme.accent);
     root.style.setProperty('--pt-accent-rgb', appTheme.accentRgb);
     root.style.setProperty('--pt-accent-light', appTheme.accentLight);
+    root.style.setProperty('--pt-accent-text', appTheme.accentText);
     root.style.setProperty('--pt-bg', appTheme.bg);
     root.style.setProperty('--pt-sidebar', appTheme.sidebar);
     root.style.setProperty('--pt-elevated', appTheme.elevated);

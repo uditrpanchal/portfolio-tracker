@@ -89,7 +89,7 @@ export default function SignIn() {
           {/* Email/password form */}
           <Box component="form" onSubmit={handleEmailSignIn} noValidate sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <FormControl>
-              <FormLabel sx={{ color: '#94A3B8', mb: 0.5 }}>Email</FormLabel>
+              <FormLabel sx={{ color: '#E2E8F0', mb: 0.5 }}>Email</FormLabel>
               <TextField
                 id="email" type="email" name="email" autoComplete="email" autoFocus required
                 fullWidth placeholder="your@email.com"
@@ -98,7 +98,7 @@ export default function SignIn() {
               />
             </FormControl>
             <FormControl>
-              <FormLabel sx={{ color: '#94A3B8', mb: 0.5 }}>Password</FormLabel>
+              <FormLabel sx={{ color: '#E2E8F0', mb: 0.5 }}>Password</FormLabel>
               <TextField
                 id="password" type="password" name="password" autoComplete="current-password" required
                 fullWidth placeholder="••••••••"
@@ -115,7 +115,7 @@ export default function SignIn() {
             </Button>
           </Box>
 
-          <Divider sx={{ color: '#475569', fontSize: 12 }}>or</Divider>
+          <Divider sx={{ color: '#94A3B8', fontSize: 12 }}>or</Divider>
 
           {/* Google */}
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
@@ -129,7 +129,7 @@ export default function SignIn() {
             />
           </Box>
 
-          <Typography sx={{ textAlign: 'center', color: '#64748B', fontSize: 13 }}>
+          <Typography sx={{ textAlign: 'center', color: '#CBD5E1', fontSize: 13 }}>
             Don&apos;t have an account?{' '}
             <RouterLink to="/sign-up" style={{ color: '#60A5FA' }}>Sign up</RouterLink>
           </Typography>

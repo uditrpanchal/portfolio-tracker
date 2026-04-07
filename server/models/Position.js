@@ -9,6 +9,9 @@ const positionSchema = new mongoose.Schema(
     shares:        { type: Number, required: true, min: 0 },
     purchasePrice: { type: Number, required: true, min: 0 },
     currentPrice:  { type: Number, required: true, min: 0 },
+    entryMethod:   { type: String, enum: ['Manual', 'Transactions'], default: 'Manual' },
+    realizedGain:  { type: Number, default: 0 },
+    totalDividends:{ type: Number, default: 0 },
   },
   { timestamps: true }
 );

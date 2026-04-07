@@ -94,17 +94,17 @@ export default function SignUp() {
 
           <Box component="form" onSubmit={handleRegister} noValidate sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <FormControl>
-              <FormLabel sx={{ color: '#94A3B8', mb: 0.5 }}>Full name</FormLabel>
+              <FormLabel sx={{ color: '#E2E8F0', mb: 0.5 }}>Full name</FormLabel>
               <TextField id="name" name="name" autoComplete="name" autoFocus required fullWidth
                 placeholder="Jane Smith" value={name} onChange={e => setName(e.target.value)} sx={inputSx} />
             </FormControl>
             <FormControl>
-              <FormLabel sx={{ color: '#94A3B8', mb: 0.5 }}>Email</FormLabel>
+              <FormLabel sx={{ color: '#E2E8F0', mb: 0.5 }}>Email</FormLabel>
               <TextField id="email" type="email" name="email" autoComplete="email" required fullWidth
                 placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} sx={inputSx} />
             </FormControl>
             <FormControl>
-              <FormLabel sx={{ color: '#94A3B8', mb: 0.5 }}>Password</FormLabel>
+              <FormLabel sx={{ color: '#E2E8F0', mb: 0.5 }}>Password</FormLabel>
               <TextField id="password" type="password" name="password" autoComplete="new-password" required fullWidth
                 placeholder="Min. 8 characters" value={password} onChange={e => setPassword(e.target.value)} sx={inputSx} />
             </FormControl>
@@ -116,7 +116,7 @@ export default function SignUp() {
             </Button>
           </Box>
 
-          <Divider sx={{ color: '#475569', fontSize: 12 }}>or continue with</Divider>
+          <Divider sx={{ color: '#94A3B8', fontSize: 12 }}>or continue with</Divider>
 
           <Box sx={{ display: 'flex', justifyContent: 'center' }}>
             <GoogleLogin
@@ -126,7 +126,7 @@ export default function SignUp() {
             />
           </Box>
 
-          <Typography sx={{ textAlign: 'center', color: '#64748B', fontSize: 13 }}>
+          <Typography sx={{ textAlign: 'center', color: '#CBD5E1', fontSize: 13 }}>
             Already have an account?{' '}
             <RouterLink to="/sign-in" style={{ color: '#60A5FA' }}>Sign in</RouterLink>
           </Typography>

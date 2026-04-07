@@ -11,7 +11,7 @@ import {
   CircularProgress, Snackbar, Alert,
 } from '@mui/material';
 import { api } from '../../api/client';
-import type { Position, PositionInput, Portfolio } from '../../api/client';
+import type { Position, PositionInput, Portfolio, Transaction } from '../../api/client';
 
 /* ─── Constants ─── */
 const CHART_COLORS = ['#2563EB','#8B5CF6','#10B981','#F59E0B','#F43F5E','#06B6D4','#EC4899','#84CC16'];
@@ -76,7 +76,7 @@ function tickerColor(t: string) {
 function derive(p: Position): Derived {
   const costBasis = p.shares * p.purchasePrice;
   const marketValue = p.shares * p.currentPrice;
-  const totalReturnCAD = marketValue - costBasis;
+  const totalReturnCAD = marketValue - costBasis + (p.realizedGain || 0) + (p.totalDividends || 0);
   const totalReturnPct = costBasis !== 0 ? (totalReturnCAD / costBasis) * 100 : 0;
   return { ...p, costBasis, marketValue, totalReturnCAD, totalReturnPct };
 }
@@ -99,10 +99,10 @@ const inputBase: React.CSSProperties = {
   transition: 'border-color 0.15s, box-shadow 0.15s',
 };
 const optStyle: React.CSSProperties = { background: 'var(--pt-elevated)', color: '#F1F5F9' };
-const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: '#94A3B8', display: 'block', marginBottom: 6 };
-const sectionLabel: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.1em' };
+const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 500, color: '#E2E8F0', display: 'block', marginBottom: 6 };
+const sectionLabel: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: '#CBD5E1', textTransform: 'uppercase', letterSpacing: '0.1em' };
 const monoNum: React.CSSProperties = { fontFamily: "'JetBrains Mono', monospace" };
-const tickAxis = { fill: '#64748B', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" };
+const tickAxis = { fill: '#CBD5E1', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" };
 
 /* ─── TickerLogo ─── */
 function TickerLogo({ ticker, size = 28 }: { ticker: string; size?: number }) {
@@ -130,7 +130,7 @@ function ChartTip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
     <div style={{ background:'var(--pt-sidebar)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'12px 16px', backdropFilter:'blur(12px)', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
-      <p style={{ color:'#94A3B8', marginBottom:6 }}>{label}</p>
+      <p style={{ color:'#E2E8F0', marginBottom:6 }}>{label}</p>
       {payload.map((p: any) => <p key={p.name} style={{ color:p.color, margin:'2px 0' }}>{p.name}: {fmtCAD(p.value)}</p>)}
     </div>
   );
@@ -144,7 +144,7 @@ function KPICard({ label, value, accent, sub, isReturn, positive, animKey }:
       <div style={{ position:'absolute', left:0, top:12, bottom:12, width:3, borderRadius:2, background:accent }} />
       <p style={{ ...sectionLabel, paddingLeft:12, marginBottom:8 }}>{label}</p>
       <p key={animKey+label} style={{ ...monoNum, fontSize:22, fontWeight:700, color:isReturn?accent:'#F1F5F9', paddingLeft:12, animation:'valuePop 0.3s ease-out' }}>{value}</p>
-      <p style={{ fontSize:11, color:'#334155', marginTop:4, paddingLeft:12 }}>{sub}</p>
+      <p style={{ fontSize:11, color:'#94A3B8', marginTop:4, paddingLeft:12 }}>{sub}</p>
       {isReturn && (
         <div style={{ position:'absolute', bottom:8, right:12, opacity:0.08 }}>
           {positive ? <TrendingUp size={32} color={accent}/> : <TrendingDown size={32} color={accent}/>}
@@ -205,8 +205,60 @@ export default function ManualTracker() {
   const [fShares,   setFShares]   = useState('');
   const [fPurchase, setFPurchase] = useState('');
   const [fPortfolio, setFPortfolio] = useState<string>('');
+  const [fEntryMethod, setFEntryMethod] = useState<'Manual' | 'Transactions'>('Manual');
   const [touched,   setTouched]   = useState<Record<string,boolean>>({});
   const [refreshing, setRefreshing] = useState(false);
+
+  /* transactions */
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [txLoading, setTxLoading] = useState(false);
+  const [isAddingTx, setIsAddingTx] = useState(false);
+  const [fTxType, setFTxType] = useState<'Buy'|'Sell'|'Dividend'|'DividendReinvest'>('Buy');
+  const [fTxDate, setFTxDate] = useState(new Date().toISOString().slice(0,10));
+  const [fTxShares, setFTxShares] = useState('');
+  const [fTxPrice, setFTxPrice] = useState('');
+  const [fTxAmount, setFTxAmount] = useState('');
+
+  const fetchTransactions = useCallback((pid: string) => {
+    setTxLoading(true);
+    api.getTransactions(pid)
+       .then(txs => setTransactions(txs))
+       .catch(err => setSnack({ msg: err.message, severity: 'error' }))
+       .finally(() => setTxLoading(false));
+  }, []);
+
+  const handleAddTx = async () => {
+    if (!editId) return;
+    try {
+      setTxLoading(true);
+      const res = await api.addTransaction(editId, {
+        type: fTxType, date: fTxDate,
+        shares: +fTxShares || 0, price: +fTxPrice || 0, amount: +fTxAmount || 0
+      });
+      setTransactions([res.transaction, ...transactions]);
+      setPositions(prev => prev.map(p => p._id === editId ? res.position : p));
+      setIsAddingTx(false); setFTxShares(''); setFTxPrice(''); setFTxAmount('');
+      setSnack({ msg: 'Transaction added.', severity: 'success' });
+    } catch (err: any) {
+      setSnack({ msg: err.message, severity: 'error' });
+    } finally {
+      setTxLoading(false);
+    }
+  };
+
+  const handleDeleteTx = async (txId: string) => {
+    try {
+      setTxLoading(true);
+      const res = await api.deleteTransaction(txId);
+      setTransactions(prev => prev.filter(t => t._id !== txId));
+      setPositions(prev => prev.map(p => p._id === editId ? res.position : p));
+      setSnack({ msg: 'Transaction removed.', severity: 'success' });
+    } catch (err: any) {
+      setSnack({ msg: err.message, severity: 'error' });
+    } finally {
+      setTxLoading(false);
+    }
+  };
 
   /* ── fx rates for All-tab cross-currency grand totals ── */
   // rates[X] = how many X per 1 USD  (e.g. rates.CAD ≈ 1.38)
@@ -328,11 +380,13 @@ export default function ManualTracker() {
         const shares         = existing.shares + p.shares;
         const costBasis      = existing.costBasis + p.costBasis;
         const marketValue    = existing.marketValue + p.marketValue;
-        const totalReturnCAD = marketValue - costBasis;
+        const realizedGain   = (existing.realizedGain || 0) + (p.realizedGain || 0);
+        const totalDividends = (existing.totalDividends || 0) + (p.totalDividends || 0);
+        const totalReturnCAD = marketValue - costBasis + realizedGain + totalDividends;
         const totalReturnPct = costBasis !== 0 ? (totalReturnCAD / costBasis) * 100 : 0;
-        const purchasePrice  = costBasis / shares;
-        const currentPrice   = marketValue / shares;
-        map.set(p.ticker, { ...existing, shares, costBasis, marketValue, totalReturnCAD, totalReturnPct, purchasePrice, currentPrice });
+        const purchasePrice  = shares > 0 ? costBasis / shares : 0;
+        const currentPrice   = shares > 0 ? marketValue / shares : p.currentPrice;
+        map.set(p.ticker, { ...existing, shares, costBasis, marketValue, totalReturnCAD, totalReturnPct, purchasePrice, currentPrice, realizedGain, totalDividends });
       }
     }
     return [...map.values()];
@@ -386,13 +440,16 @@ export default function ManualTracker() {
   /* ── modal ── */
   const openAdd = () => {
     setEditId(null); setFTicker(''); setFType('Stock'); setFShares(''); setFPurchase('');
-    setFPortfolio(activePortfolio ?? '');
+    setFPortfolio(activePortfolio ?? ''); setFEntryMethod('Manual'); setTransactions([]); setIsAddingTx(false);
     setTouched({}); setModalOpen(true);
   };
   const openEdit = (p: Position) => {
     setEditId(p._id); setFTicker(p.ticker); setFType(p.securityType);
     setFShares(String(p.shares)); setFPurchase(String(p.purchasePrice));
-    setFPortfolio(p.portfolioId ?? '');
+    setFPortfolio(p.portfolioId ?? ''); setFEntryMethod(p.entryMethod || 'Manual');
+    setIsAddingTx(false);
+    if ((p.entryMethod || 'Manual') === 'Transactions') fetchTransactions(p._id);
+    else setTransactions([]);
     setTouched({}); setModalOpen(true);
   };
   const closeModal = () => setModalOpen(false);
@@ -401,10 +458,12 @@ export default function ManualTracker() {
   const errors = useMemo(() => {
     const e: Record<string,string> = {};
     if (!fTicker.trim()) e.ticker = 'Required';
-    if (!fShares || isNaN(+fShares) || +fShares<=0) e.shares = 'Must be > 0';
-    if (!fPurchase || isNaN(+fPurchase) || +fPurchase<=0) e.purchasePrice = 'Must be > 0';
+    if (fEntryMethod === 'Manual') {
+      if (!fShares || isNaN(+fShares) || +fShares<0) e.shares = 'Must be ≥ 0';
+      if (!fPurchase || isNaN(+fPurchase) || +fPurchase<0) e.purchasePrice = 'Must be ≥ 0';
+    }
     return e;
-  }, [fTicker, fShares, fPurchase]);
+  }, [fTicker, fShares, fPurchase, fEntryMethod]);
 
   const isValid = Object.keys(errors).length === 0;
 
@@ -415,9 +474,10 @@ export default function ManualTracker() {
     const payload: PositionInput = {
       ticker: fTicker.trim().toUpperCase(),
       securityType: fType,
-      shares: +fShares,
-      purchasePrice: +fPurchase,
+      shares: fEntryMethod === 'Manual' ? +fShares : (editId ? (positions.find(p => p._id === editId)?.shares || 0) : 0),
+      purchasePrice: fEntryMethod === 'Manual' ? +fPurchase : (editId ? (positions.find(p => p._id === editId)?.purchasePrice || 0) : 0),
       portfolioId: fPortfolio || null,
+      entryMethod: fEntryMethod,
     };
     setSaving(true);
     try {
@@ -436,7 +496,7 @@ export default function ManualTracker() {
     } finally {
       setSaving(false);
     }
-  }, [isValid, editId, fTicker, fType, fShares, fPurchase, fPortfolio]);
+  }, [isValid, editId, fTicker, fType, fShares, fPurchase, fPortfolio, fEntryMethod, positions]);
 
   /* ── delete (API) ── */
   const confirmDelete = useCallback(async (id: string) => {
@@ -551,9 +611,9 @@ export default function ManualTracker() {
     const base = ticker.split('.')[0];
     const r = ratings[ticker] ?? ratings[base] ?? null;
     if (ratingsLoading && !r) {
-      return <span style={{ fontSize:10, color:'#475569' }}>…</span>;
+      return <span style={{ fontSize:10, color:'#94A3B8' }}>…</span>;
     }
-    if (!r) return <span style={{ fontSize:11, color:'#334155' }}>—</span>;
+    if (!r) return <span style={{ fontSize:11, color:'#94A3B8' }}>—</span>;
 
     const STYLE: Record<string, { bg: string; color: string }> = {
       strong_buy:     { bg: 'rgba(34,197,94,0.15)',   color: '#4ADE80' },
@@ -568,7 +628,7 @@ export default function ManualTracker() {
       sell:           { bg: 'rgba(248,113,113,0.15)',  color: '#F87171' },
       strong_sell:    { bg: 'rgba(239,68,68,0.15)',    color: '#FCA5A5' },
     };
-    const { bg, color } = STYLE[r.key] ?? { bg: 'rgba(100,116,139,0.15)', color: '#94A3B8' };
+    const { bg, color } = STYLE[r.key] ?? { bg: 'rgba(100,116,139,0.15)', color: '#E2E8F0' };
     const title = `${r.mean} / 5 · ${r.analysts} analyst${r.analysts !== 1 ? 's' : ''}`;
 
     return (
@@ -599,13 +659,13 @@ export default function ManualTracker() {
 
       {/* ══ PORTFOLIO TABS ══ */}
       <div style={{ ...glass, padding:'12px 16px', display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-        <Wallet size={16} color="#64748B" style={{ flexShrink:0 }}/>
+        <Wallet size={16} color="#CBD5E1" style={{ flexShrink:0 }}/>
 
         {/* All tab */}
         <button onClick={() => setActivePortfolio(null)}
           style={{ padding:'6px 16px', borderRadius:999, fontSize:13, fontWeight:500, cursor:'pointer', border:'none', transition:'all 0.15s',
             background: activePortfolio === null ? 'var(--pt-accent)' : 'rgba(255,255,255,0.06)',
-            color:       activePortfolio === null ? '#fff'    : '#94A3B8',
+            color:       activePortfolio === null ? 'var(--pt-accent-text)'    : '#E2E8F0',
             boxShadow:   activePortfolio === null ? '0 0 12px rgba(var(--pt-accent-rgb),0.4)' : 'none',
           }}>All</button>
 
@@ -622,13 +682,13 @@ export default function ManualTracker() {
                   {CURRENCIES.map(c => <option key={c.code} value={c.code} style={optStyle}>{c.code}</option>)}
                 </select>
                 <button onClick={() => handleRenamePortfolio(pt._id)} style={{ padding:6, borderRadius:8, background:'rgba(var(--pt-accent-rgb),0.2)', color:'var(--pt-accent-light)', border:'none', cursor:'pointer', display:'flex' }}><Check size={13}/></button>
-                <button onClick={() => setRenamingId(null)} style={{ padding:6, borderRadius:8, background:'none', color:'#64748B', border:'none', cursor:'pointer', display:'flex' }}><X size={13}/></button>
+                <button onClick={() => setRenamingId(null)} style={{ padding:6, borderRadius:8, background:'none', color:'#CBD5E1', border:'none', cursor:'pointer', display:'flex' }}><X size={13}/></button>
               </div>
             ) : deletingPortfolioId === pt._id ? (
               <div style={{ display:'flex', alignItems:'center', gap:6, background:'rgba(244,63,94,0.1)', borderRadius:999, padding:'4px 12px' }}>
-                <span style={{ fontSize:12, color:'#94A3B8' }}>Delete "{pt.name}"?</span>
+                <span style={{ fontSize:12, color:'#E2E8F0' }}>Delete "{pt.name}"?</span>
                 <button onClick={() => handleDeletePortfolio(pt._id)} style={{ fontSize:11, color:'#F87171', background:'rgba(244,63,94,0.2)', border:'none', borderRadius:6, padding:'2px 8px', cursor:'pointer' }}>Yes</button>
-                <button onClick={() => setDeletingPortfolioId(null)} style={{ fontSize:11, color:'#64748B', background:'none', border:'none', cursor:'pointer' }}>Cancel</button>
+                <button onClick={() => setDeletingPortfolioId(null)} style={{ fontSize:11, color:'#CBD5E1', background:'none', border:'none', cursor:'pointer' }}>Cancel</button>
               </div>
             ) : (
               <div style={{ display:'inline-flex', alignItems:'center', gap:0,
@@ -637,7 +697,7 @@ export default function ManualTracker() {
               }}>
                 <button onClick={() => setActivePortfolio(pt._id)}
                   style={{ padding:'6px 14px', fontSize:13, fontWeight:500, cursor:'pointer', border:'none', background:'none', borderRadius:999,
-                    color: activePortfolio === pt._id ? 'var(--pt-accent-light)' : '#94A3B8',
+                    color: activePortfolio === pt._id ? 'var(--pt-accent-light)' : '#E2E8F0',
                   }}>{pt.name}</button>
                 {activePortfolio === pt._id && (
                   <span style={{ fontSize:10, color:'var(--pt-accent-light)', fontWeight:600, fontFamily:"'JetBrains Mono',monospace", background:'rgba(var(--pt-accent-rgb),0.15)', borderRadius:4, padding:'1px 5px', marginRight:2 }}>{pt.currency ?? 'CAD'}</span>
@@ -645,16 +705,16 @@ export default function ManualTracker() {
                 {activePortfolio === pt._id && (
                   <div style={{ display:'flex', alignItems:'center', paddingRight:6, gap:2 }}>
                     <button onClick={() => { setRenamingId(pt._id); setRenameValue(pt.name); setRenameCurrency(pt.currency ?? 'CAD'); }}
-                      style={{ padding:4, border:'none', background:'none', color:'#64748B', cursor:'pointer', borderRadius:6, display:'flex',
+                      style={{ padding:4, border:'none', background:'none', color:'#CBD5E1', cursor:'pointer', borderRadius:6, display:'flex',
                         transition:'color 0.15s' }}
                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.color='var(--pt-accent-light)'}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color='#64748B'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color='#CBD5E1'}
                     ><Pencil size={11}/></button>
                     <button onClick={() => setDeletingPortfolioId(pt._id)}
-                      style={{ padding:4, border:'none', background:'none', color:'#64748B', cursor:'pointer', borderRadius:6, display:'flex',
+                      style={{ padding:4, border:'none', background:'none', color:'#CBD5E1', cursor:'pointer', borderRadius:6, display:'flex',
                         transition:'color 0.15s' }}
                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.color='#F87171'}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color='#64748B'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color='#CBD5E1'}
                     ><Trash2 size={11}/></button>
                   </div>
                 )}
@@ -675,17 +735,17 @@ export default function ManualTracker() {
               {CURRENCIES.map(c => <option key={c.code} value={c.code} style={optStyle}>{c.label}</option>)}
             </select>
             <button onClick={handleCreatePortfolio} disabled={savingPortfolio || !newPortfolioName.trim()}
-              style={{ padding:'5px 14px', borderRadius:999, fontSize:13, background:'var(--pt-accent)', color:'#fff', border:'none', cursor:'pointer', opacity: (!newPortfolioName.trim()||savingPortfolio) ? 0.5 : 1 }}>
+              style={{ padding:'5px 14px', borderRadius:999, fontSize:13, background:'var(--pt-accent)', color:'var(--pt-accent-text)', border:'none', cursor:'pointer', opacity: (!newPortfolioName.trim()||savingPortfolio) ? 0.5 : 1 }}>
               {savingPortfolio ? '…' : 'Add'}
             </button>
             <button onClick={() => { setAddingPortfolio(false); setNewPortfolioName(''); setNewPortfolioCurrency('CAD'); }}
-              style={{ padding:6, borderRadius:8, background:'none', color:'#64748B', border:'none', cursor:'pointer', display:'flex' }}><X size={14}/></button>
+              style={{ padding:6, borderRadius:8, background:'none', color:'#CBD5E1', border:'none', cursor:'pointer', display:'flex' }}><X size={14}/></button>
           </div>
         ) : (
           <button onClick={() => setAddingPortfolio(true)}
-            style={{ padding:'5px 12px', borderRadius:999, fontSize:12, color:'#64748B', background:'none', border:'1px dashed rgba(255,255,255,0.15)', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5, transition:'all 0.15s' }}
+            style={{ padding:'5px 12px', borderRadius:999, fontSize:12, color:'#CBD5E1', background:'none', border:'1px dashed rgba(255,255,255,0.15)', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5, transition:'all 0.15s' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color='var(--pt-accent-light)'; (e.currentTarget as HTMLElement).style.borderColor='rgba(var(--pt-accent-rgb),0.4)'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color='#64748B'; (e.currentTarget as HTMLElement).style.borderColor='rgba(255,255,255,0.15)'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color='#CBD5E1'; (e.currentTarget as HTMLElement).style.borderColor='rgba(255,255,255,0.15)'; }}
           ><FolderPlus size={13}/> New Portfolio</button>
         )}
       </div>
@@ -695,9 +755,9 @@ export default function ManualTracker() {
         <div>
           {activePortfolio === null ? (
             <>
-              <p style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', color:'#64748B', marginBottom:10 }}>Total Portfolio Value — All Portfolios</p>
+              <p style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', color:'#CBD5E1', marginBottom:10 }}>Total Portfolio Value — All Portfolios</p>
               {fxLoading ? (
-                <div style={{ display:'flex', alignItems:'center', gap:8, color:'#64748B', fontSize:13 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, color:'#CBD5E1', fontSize:13 }}>
                   <CircularProgress size={14} sx={{ color:'var(--pt-accent-light)' }}/>
                   <span>Loading exchange rates…</span>
                 </div>
@@ -709,7 +769,7 @@ export default function ManualTracker() {
                       <div key={gt.currency} style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.09)', borderRadius:12, padding:'12px 18px', minWidth:200 }}>
                         <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6 }}>
                           <span style={{ color:'var(--pt-accent-light)', fontWeight:700, fontSize:11, fontFamily:"'JetBrains Mono',monospace", background:'rgba(var(--pt-accent-rgb),0.15)', borderRadius:4, padding:'1px 6px' }}>{gt.currency}</span>
-                          <span style={{ fontSize:10, color:'#475569' }}>all portfolios</span>
+                          <span style={{ fontSize:10, color:'#94A3B8' }}>all portfolios</span>
                         </div>
                         <p key={animKey} style={{ ...monoNum, fontSize:24, fontWeight:700, color:'#F1F5F9', lineHeight:1.15, animation:'valuePop 0.3s ease-out' }}>{fmt(gt.mval)}</p>
                         <div style={{ display:'flex', alignItems:'center', gap:5, marginTop:4 }}>
@@ -742,13 +802,13 @@ export default function ManualTracker() {
                       );
                     })}
                   </div>
-                  {fxError && <p style={{ fontSize:10, color:'#475569', marginTop:2 }}>Could not load exchange rates — showing native currency totals</p>}
+                  {fxError && <p style={{ fontSize:10, color:'#94A3B8', marginTop:2 }}>Could not load exchange rates — showing native currency totals</p>}
                 </>
               )}
             </>
           ) : (
             <>
-              <p style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', color:'#64748B', marginBottom:4 }}>Total Portfolio Value</p>
+              <p style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', color:'#CBD5E1', marginBottom:4 }}>Total Portfolio Value</p>
               <p key={animKey} style={{ ...monoNum, fontSize:36, fontWeight:700, color:'#F1F5F9', animation:'valuePop 0.3s ease-out', lineHeight:1.1 }}>{fmtMoney(totals.mval)}</p>
               <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:6 }}>
                 {totals.ret>=0 ? <TrendingUp size={16} color="#10B981"/> : <TrendingDown size={16} color="#F43F5E"/>}
@@ -811,7 +871,7 @@ export default function ManualTracker() {
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:8 }}>
             <div style={{ position:'relative' }}>
-              <Search size={14} color="#64748B" style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)' }}/>
+              <Search size={14} color="#CBD5E1" style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)' }}/>
               <input type="text" placeholder="Filter ticker…" value={filterQuery} onChange={e => setFilterQuery(e.target.value)}
                 style={{ ...inputBase, paddingLeft:32, padding:'7px 12px 7px 32px', fontSize:12, width:180 }}/>
             </div>
@@ -823,8 +883,8 @@ export default function ManualTracker() {
           {filtered.length === 0 ? (
             <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'80px 24px' }}>
               <TrendingUp size={48} color="var(--pt-elevated)" style={{ marginBottom:16 }}/>
-              <p style={{ fontSize:18, fontWeight:600, color:'#64748B', marginBottom:6 }}>{filterQuery?'No matches found': activePortfolio===null ? 'No positions yet' : 'This portfolio is empty'}</p>
-              <p style={{ fontSize:13, color:'#334155', marginBottom:20 }}>{filterQuery?'Try a different ticker.': activePortfolio===null ? 'Select a portfolio tab and add positions.' : 'Click Add Position to start tracking.'}</p>
+              <p style={{ fontSize:18, fontWeight:600, color:'#CBD5E1', marginBottom:6 }}>{filterQuery?'No matches found': activePortfolio===null ? 'No positions yet' : 'This portfolio is empty'}</p>
+              <p style={{ fontSize:13, color:'#94A3B8', marginBottom:20 }}>{filterQuery?'Try a different ticker.': activePortfolio===null ? 'Select a portfolio tab and add positions.' : 'Click Add Position to start tracking.'}</p>
               {!filterQuery && activePortfolio !== null && <Btn onClick={openAdd}><Plus size={16}/> Add Position</Btn>}
             </div>
           ) : (
@@ -832,16 +892,16 @@ export default function ManualTracker() {
               <thead>
                 <tr style={{ background:'rgba(255,255,255,0.025)' }}>
                   {cols.map(([label, key, align]) => (
-                    <th key={key} onClick={() => toggleSort(key)} style={{ textAlign:align, padding:'12px 16px', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'#64748B', textTransform:'uppercase', letterSpacing:'0.08em', cursor:'pointer', userSelect:'none', transition:'color 0.15s' }}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.color='#94A3B8'}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color='#64748B'}
+                    <th key={key} onClick={() => toggleSort(key)} style={{ textAlign:align, padding:'12px 16px', whiteSpace:'nowrap', fontSize:11, fontWeight:600, color:'#CBD5E1', textTransform:'uppercase', letterSpacing:'0.08em', cursor:'pointer', userSelect:'none', transition:'color 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.color='#E2E8F0'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.color='#CBD5E1'}
                     >
                       <span style={{ display:'inline-flex', alignItems:'center', gap:4 }}>
                         {label}{sortKey===key && (sortDir==='asc'?<ChevronUp size={12}/>:<ChevronDown size={12}/>)}
                       </span>
                     </th>
                   ))}
-                  <th style={{ padding:'12px 16px', fontSize:11, fontWeight:600, color:'#64748B', textTransform:'uppercase', letterSpacing:'0.08em', whiteSpace:'nowrap' }}>Rating</th>
+                  <th style={{ padding:'12px 16px', fontSize:11, fontWeight:600, color:'#CBD5E1', textTransform:'uppercase', letterSpacing:'0.08em', whiteSpace:'nowrap' }}>Rating</th>
                   <th style={{ width:90 }}/>
                 </tr>
               </thead>
@@ -860,7 +920,7 @@ export default function ManualTracker() {
                           <TickerLogo ticker={p.ticker} size={28}/>
                           <div>
                             <p style={{ ...monoNum, fontWeight:700, color:'#F1F5F9', fontSize:14 }}>{p.ticker}</p>
-                            <p style={{ fontSize:11, color:'#475569' }}>
+                            <p style={{ fontSize:11, color:'#94A3B8' }}>
                               {p.securityType}
                               {activePortfolio === null && (
                                 <span style={{ marginLeft:6, color:'var(--pt-accent-light)', fontFamily:"'JetBrains Mono',monospace", fontWeight:600, fontSize:10, background:'rgba(var(--pt-accent-rgb),0.12)', borderRadius:4, padding:'1px 5px' }}>{currencyOf(p.portfolioId)}</span>
@@ -912,14 +972,14 @@ export default function ManualTracker() {
                       <td style={{ padding:'0 12px', textAlign:'center' }}>
                         {canEdit && (deleteId===p._id ? (
                           <div style={{ display:'flex', alignItems:'center', gap:6, whiteSpace:'nowrap' }}>
-                            <span style={{ fontSize:11, color:'#94A3B8' }}>Remove?</span>
+                            <span style={{ fontSize:11, color:'#E2E8F0' }}>Remove?</span>
                             <button onClick={() => confirmDelete(p._id)} style={{ background:'rgba(244,63,94,0.2)', color:'#F87171', borderRadius:8, padding:'3px 10px', fontSize:11, cursor:'pointer', border:'none', transition:'background 0.15s' }}
                               onMouseEnter={e => (e.currentTarget as HTMLElement).style.background='rgba(244,63,94,0.35)'}
                               onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='rgba(244,63,94,0.2)'}
                             >Yes</button>
-                            <button onClick={() => setDeleteId(null)} style={{ color:'#64748B', borderRadius:8, padding:'3px 10px', fontSize:11, cursor:'pointer', border:'none', background:'none', transition:'color 0.15s' }}
-                              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color='#94A3B8'}
-                              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color='#64748B'}
+                            <button onClick={() => setDeleteId(null)} style={{ color:'#CBD5E1', borderRadius:8, padding:'3px 10px', fontSize:11, cursor:'pointer', border:'none', background:'none', transition:'color 0.15s' }}
+                              onMouseEnter={e => (e.currentTarget as HTMLElement).style.color='#E2E8F0'}
+                              onMouseLeave={e => (e.currentTarget as HTMLElement).style.color='#CBD5E1'}
                             >Cancel</button>
                           </div>
                         ) : (
@@ -949,7 +1009,7 @@ export default function ManualTracker() {
                 <Pie data={donutData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={60} outerRadius={90} paddingAngle={3} stroke="transparent" isAnimationActive animationDuration={900} animationEasing="ease-out">
                   {donutData.map(e => <Cell key={e.name} fill={e.color}/>)}
                 </Pie>
-                <text x="50%" y="47%" textAnchor="middle" style={{ fill:'#64748B', fontSize:10 }}>TOTAL</text>
+                <text x="50%" y="47%" textAnchor="middle" style={{ fill:'#CBD5E1', fontSize:10 }}>TOTAL</text>
                 <text x="50%" y="57%" textAnchor="middle" style={{ fill:'#F1F5F9', fontSize:14, fontFamily:"'JetBrains Mono',monospace", fontWeight:600 }}>{fmtCmp(totals.mval)}</text>
                 <Tooltip content={<ChartTip/>} wrapperStyle={{ outline:'none', background:'transparent', border:'none', boxShadow:'none', padding:0 }}/>
               </PieChart>
@@ -961,8 +1021,8 @@ export default function ManualTracker() {
                   <div key={e.name} style={{ display:'flex', alignItems:'center', gap:8 }}>
                     <TickerLogo ticker={e.name} size={18}/>
                     <span style={{ fontSize:12, color:'#CBD5E1', fontWeight:500 }}>{e.name}</span>
-                    <span style={{ ...monoNum, fontSize:11, color:'#64748B', marginLeft:'auto' }}>{fmtMoney(e.value)}</span>
-                    <span style={{ ...monoNum, fontSize:11, color:'#475569', width:40, textAlign:'right' }}>{pct}%</span>
+                    <span style={{ ...monoNum, fontSize:11, color:'#CBD5E1', marginLeft:'auto' }}>{fmtMoney(e.value)}</span>
+                    <span style={{ ...monoNum, fontSize:11, color:'#94A3B8', width:40, textAlign:'right' }}>{pct}%</span>
                   </div>
                 );
               })}
@@ -995,7 +1055,7 @@ export default function ManualTracker() {
                 <XAxis dataKey="ticker" tick={tickAxis} axisLine={{ stroke:'rgba(255,255,255,0.08)' }} tickLine={false}/>
                 <YAxis tick={tickAxis} axisLine={{ stroke:'rgba(255,255,255,0.08)' }} tickLine={false} tickFormatter={fmtCmp}/>
                 <Tooltip content={<ChartTip/>} cursor={{ fill:'rgba(255,255,255,0.04)' }} wrapperStyle={{ outline:'none', background:'transparent', border:'none', boxShadow:'none', padding:0 }}/>
-                <Legend formatter={(v:string) => <span style={{ color:'#94A3B8', fontSize:11 }}>{v}</span>}/>
+                <Legend formatter={(v:string) => <span style={{ color:'#E2E8F0', fontSize:11 }}>{v}</span>}/>
                 <Bar dataKey="costBasis"   name="Cost Basis"   fill="#1E3D6E" radius={[4,4,0,0] as any} isAnimationActive animationDuration={900} animationEasing="ease-out"/>
                 <Bar dataKey="marketValue" name="Market Value" fill="var(--pt-accent)" radius={[4,4,0,0] as any} isAnimationActive animationDuration={900} animationEasing="ease-out"/>
               </BarChart>
@@ -1026,16 +1086,16 @@ export default function ManualTracker() {
                 <span style={{ background: 'rgba(var(--pt-accent-rgb),0.2)', color: 'var(--pt-accent-light)', borderRadius: 999, padding: '2px 10px', fontSize: 12, ...monoNum }}>
                   {payerCount} payer{payerCount !== 1 ? 's' : ''}
                 </span>
-                {dividendLoading && <span style={{ fontSize: 11, color: '#64748B' }}>Loading…</span>}
+                {dividendLoading && <span style={{ fontSize: 11, color: '#CBD5E1' }}>Loading…</span>}
               </div>
               {/* Summary KPIs */}
               <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
                 <div>
-                  <p style={{ fontSize: 10, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>YTD {YEAR} Received</p>
+                  <p style={{ fontSize: 10, color: '#CBD5E1', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>YTD {YEAR} Received</p>
                   <p style={{ ...monoNum, fontSize: 18, fontWeight: 700, color: '#10B981' }}>{fmtMoney(divYtdTotal)}</p>
                 </div>
                 <div>
-                  <p style={{ fontSize: 10, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>Projected Annual</p>
+                  <p style={{ fontSize: 10, color: '#CBD5E1', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 3 }}>Projected Annual</p>
                   <p style={{ ...monoNum, fontSize: 18, fontWeight: 700, color: '#F1F5F9' }}>{fmtMoney(divAnnualTotal)}</p>
                 </div>
               </div>
@@ -1047,7 +1107,7 @@ export default function ManualTracker() {
                 <thead>
                   <tr>
                     {(['Ticker', 'Shares', 'Annual $/Sh', 'Yield', 'Frequency', 'Last Div', 'Next Ex-Div', 'YTD $/Sh', 'YTD Total'] as const).map((col, i) => (
-                      <th key={col} style={{ padding: '10px 16px', fontSize: 11, fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', textAlign: i === 0 ? 'left' : 'right' }}>
+                      <th key={col} style={{ padding: '10px 16px', fontSize: 11, fontWeight: 600, color: '#CBD5E1', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap', textAlign: i === 0 ? 'left' : 'right' }}>
                         {col}
                       </th>
                     ))}
@@ -1075,31 +1135,31 @@ export default function ManualTracker() {
                         {/* Shares */}
                         <td style={{ ...td, color: '#CBD5E1' }}>{fmtShares(p.shares)}</td>
                         {/* Annual $/Sh */}
-                        <td style={{ ...td, color: d?.annualRate ? '#F1F5F9' : '#334155' }}>
+                        <td style={{ ...td, color: d?.annualRate ? '#F1F5F9' : '#94A3B8' }}>
                           {d?.annualRate != null ? `$${d.annualRate.toFixed(4)}` : '—'}
                         </td>
                         {/* Yield */}
-                        <td style={{ ...td, color: d?.dividendYield ? '#10B981' : '#334155' }}>
+                        <td style={{ ...td, color: d?.dividendYield ? '#10B981' : '#94A3B8' }}>
                           {d?.dividendYield != null ? (d.dividendYield * 100).toFixed(2) + '%' : '—'}
                         </td>
                         {/* Frequency */}
-                        <td style={{ ...td, color: d ? '#94A3B8' : '#334155', textAlign: 'right' }}>
+                        <td style={{ ...td, color: d ? '#E2E8F0' : '#94A3B8', textAlign: 'right' }}>
                           {d ? freqLabel(d.frequency) : '—'}
                         </td>
                         {/* Last Div */}
-                        <td style={{ ...td, color: d?.lastAmount ? '#CBD5E1' : '#334155' }}>
+                        <td style={{ ...td, color: d?.lastAmount ? '#CBD5E1' : '#94A3B8' }}>
                           {d?.lastAmount != null ? `$${d.lastAmount.toFixed(4)}` : '—'}
                         </td>
                         {/* Ex-Div Date */}
-                        <td style={{ ...td, color: isUpcoming ? '#FCD34D' : '#64748B' }}>
+                        <td style={{ ...td, color: isUpcoming ? '#FCD34D' : '#CBD5E1' }}>
                           {d ? fmtDate(d.exDividendDate, d.exDivEstimated) : '—'}
                         </td>
                         {/* YTD $/Sh */}
-                        <td style={{ ...td, color: (d?.ytdPerShare ?? 0) > 0 ? '#86EFAC' : '#334155' }}>
+                        <td style={{ ...td, color: (d?.ytdPerShare ?? 0) > 0 ? '#86EFAC' : '#94A3B8' }}>
                           {(d?.ytdPerShare ?? 0) > 0 ? `$${d!.ytdPerShare.toFixed(4)}` : '—'}
                         </td>
                         {/* YTD Total */}
-                        <td style={{ ...td, color: ytdTotal > 0 ? '#10B981' : '#334155', fontWeight: ytdTotal > 0 ? 700 : 400 }}>
+                        <td style={{ ...td, color: ytdTotal > 0 ? '#10B981' : '#94A3B8', fontWeight: ytdTotal > 0 ? 700 : 400 }}>
                           {ytdTotal > 0 ? fmtMoney(ytdTotal) : annualTotal2 > 0 ? `proj. ${fmtMoney(annualTotal2)}/yr` : '—'}
                         </td>
                       </tr>
@@ -1108,7 +1168,7 @@ export default function ManualTracker() {
                 </tbody>
               </table>
             </div>
-            <p style={{ fontSize: 10, color: '#334155', padding: '8px 16px', textAlign: 'right' }}>
+            <p style={{ fontSize: 10, color: '#94A3B8', padding: '8px 16px', textAlign: 'right' }}>
               ~ estimated ex-div date  ·  Dividend data via Yahoo Finance  ·  Not financial advice
             </p>
           </div>
@@ -1132,8 +1192,20 @@ export default function ManualTracker() {
             </div>
 
             {/* form */}
-            <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:16 }}>
+            <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:16, maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' }}>
               <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                {/* Entry Method */}
+                <div style={{ gridColumn: '1 / -1', background:'rgba(255,255,255,0.02)', padding:4, borderRadius:12, display:'flex', gap:4 }}>
+                  {(['Manual', 'Transactions'] as const).map(m => (
+                    <button key={m} type="button" onClick={() => { setFEntryMethod(m); setTouched({}); }}
+                      style={{ flex:1, padding:'8px 12px', border:'none', borderRadius:10, fontSize:12, fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+                        background: fEntryMethod===m ? 'var(--pt-accent)' : 'transparent', color: fEntryMethod===m ? 'var(--pt-accent-text)' : '#E2E8F0' }}
+                    >
+                      {m === 'Manual' ? 'Manual Entry' : 'Transactions'}
+                    </button>
+                  ))}
+                </div>
+
                 {/* Ticker */}
                 <div>
                   <label style={labelStyle}>Ticker</label>
@@ -1160,29 +1232,116 @@ export default function ManualTracker() {
                     {SECURITY_TYPES.map(t => <option key={t} value={t} style={optStyle}>{TYPE_EMOJI[t]} {t}</option>)}
                   </select>
                 </div>
-                {/* Shares */}
-                <div>
-                  <label style={labelStyle}>Shares</label>
-                  <input type="number" step="any" value={fShares} placeholder="0.0000"
-                    onChange={e => { setFShares(e.target.value); setTouched(t=>({...t,shares:true})); }}
-                    style={{ ...inputBase, ...(touched.shares&&errors.shares?{borderColor:'#F43F5E'}:{}) }}
-                    onFocus={e => { e.currentTarget.style.borderColor='var(--pt-accent)'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(var(--pt-accent-rgb),0.25)'; }}
-                    onBlur={e => { e.currentTarget.style.borderColor='rgba(255,255,255,0.10)'; e.currentTarget.style.boxShadow='none'; }}
-                  />
-                  {touched.shares&&errors.shares && <p style={{ fontSize:11, color:'#F87171', marginTop:4 }}>{errors.shares}</p>}
-                </div>
-                {/* Purchase Price */}
-                <div>
-                  <label style={labelStyle}>Purchase Price</label>
-                  <input type="number" step="any" value={fPurchase} placeholder="0.00"
-                    onChange={e => { setFPurchase(e.target.value); setTouched(t=>({...t,purchasePrice:true})); }}
-                    style={{ ...inputBase, ...(touched.purchasePrice&&errors.purchasePrice?{borderColor:'#F43F5E'}:{}) }}
-                    onFocus={e => { e.currentTarget.style.borderColor='var(--pt-accent)'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(var(--pt-accent-rgb),0.25)'; }}
-                    onBlur={e => { e.currentTarget.style.borderColor='rgba(255,255,255,0.10)'; e.currentTarget.style.boxShadow='none'; }}
-                  />
-                  {touched.purchasePrice&&errors.purchasePrice && <p style={{ fontSize:11, color:'#F87171', marginTop:4 }}>{errors.purchasePrice}</p>}
-                </div>
+                {/* Manual Fields */}
+                {fEntryMethod === 'Manual' && (
+                  <>
+                    {/* Shares */}
+                    <div>
+                      <label style={labelStyle}>Shares</label>
+                      <input type="number" step="any" value={fShares} placeholder="0.0000"
+                        onChange={e => { setFShares(e.target.value); setTouched(t=>({...t,shares:true})); }}
+                        style={{ ...inputBase, ...(touched.shares&&errors.shares?{borderColor:'#F43F5E'}:{}) }}
+                        onFocus={e => { e.currentTarget.style.borderColor='var(--pt-accent)'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(var(--pt-accent-rgb),0.25)'; }}
+                        onBlur={e => { e.currentTarget.style.borderColor='rgba(255,255,255,0.10)'; e.currentTarget.style.boxShadow='none'; }}
+                      />
+                      {touched.shares&&errors.shares && <p style={{ fontSize:11, color:'#F87171', marginTop:4 }}>{errors.shares}</p>}
+                    </div>
+                    {/* Purchase Price */}
+                    <div>
+                      <label style={labelStyle}>Purchase Price</label>
+                      <input type="number" step="any" value={fPurchase} placeholder="0.00"
+                        onChange={e => { setFPurchase(e.target.value); setTouched(t=>({...t,purchasePrice:true})); }}
+                        style={{ ...inputBase, ...(touched.purchasePrice&&errors.purchasePrice?{borderColor:'#F43F5E'}:{}) }}
+                        onFocus={e => { e.currentTarget.style.borderColor='var(--pt-accent)'; e.currentTarget.style.boxShadow='0 0 0 3px rgba(var(--pt-accent-rgb),0.25)'; }}
+                        onBlur={e => { e.currentTarget.style.borderColor='rgba(255,255,255,0.10)'; e.currentTarget.style.boxShadow='none'; }}
+                      />
+                      {touched.purchasePrice&&errors.purchasePrice && <p style={{ fontSize:11, color:'#F87171', marginTop:4 }}>{errors.purchasePrice}</p>}
+                    </div>
+                  </>
+                )}
               </div>
+              {/* Transactions Section */}
+              {fEntryMethod === 'Transactions' && (
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 16 }}>
+                  {!editId ? (
+                    <div style={{ background:'rgba(var(--pt-accent-rgb),0.08)', borderRadius:12, padding:'16px', textAlign:'center' }}>
+                      <p style={{ fontSize:13, color:'var(--pt-accent-light)' }}>Save this position first to start adding transactions.</p>
+                    </div>
+                  ) : (
+                    <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                        <p style={sectionLabel}>Transactions</p>
+                        <GhostBtn onClick={() => setIsAddingTx(!isAddingTx)}>
+                          {isAddingTx ? 'Cancel' : '+ Add Transaction'}
+                        </GhostBtn>
+                      </div>
+
+                      {isAddingTx && (
+                        <div style={{ background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:12, padding:16, display:'flex', flexDirection:'column', gap:12 }}>
+                          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                            <div>
+                              <label style={labelStyle}>Type</label>
+                              <select value={fTxType} onChange={e=>setFTxType(e.target.value as any)} style={inputBase}>
+                                <option value="Buy" style={optStyle}>Buy</option><option value="Sell" style={optStyle}>Sell</option>
+                                <option value="Dividend" style={optStyle}>Dividend</option><option value="DividendReinvest" style={optStyle}>Div Reinvest</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label style={labelStyle}>Date</label>
+                              <input type="date" value={fTxDate} onChange={e=>setFTxDate(e.target.value)} style={inputBase} />
+                            </div>
+                            {fTxType !== 'Dividend' && (
+                              <div>
+                                <label style={labelStyle}>Shares</label>
+                                <input type="number" step="any" value={fTxShares} onChange={e=>setFTxShares(e.target.value)} placeholder="0" style={inputBase} />
+                              </div>
+                            )}
+                            {(fTxType === 'Buy' || fTxType === 'Sell' || fTxType === 'DividendReinvest') && (
+                              <div>
+                                <label style={labelStyle}>Price / Share</label>
+                                <input type="number" step="any" value={fTxPrice} onChange={e=>setFTxPrice(e.target.value)} placeholder="0.00" style={inputBase} />
+                              </div>
+                            )}
+                            {(fTxType === 'Dividend' || fTxType === 'DividendReinvest') && (
+                              <div>
+                                <label style={labelStyle}>Total Amount</label>
+                                <input type="number" step="any" value={fTxAmount} onChange={e=>setFTxAmount(e.target.value)} placeholder="0.00" style={inputBase} />
+                              </div>
+                            )}
+                          </div>
+                          <div style={{ alignSelf:'flex-end' }}>
+                            <Btn onClick={handleAddTx} disabled={txLoading}>{txLoading ? 'Saving...' : 'Save Tx'}</Btn>
+                          </div>
+                        </div>
+                      )}
+
+                      {txLoading && !isAddingTx && <p style={{ fontSize:12, color:'#CBD5E1', textAlign:'center', padding:10 }}>Loading transactions...</p>}
+                      {!txLoading && transactions.length === 0 && !isAddingTx && (
+                        <p style={{ fontSize:12, color:'#CBD5E1', textAlign:'center', padding:10 }}>No transactions recorded.</p>
+                      )}
+                      {!txLoading && transactions.length > 0 && (
+                        <div style={{ display:'flex', flexDirection:'column', gap:8, maxHeight:200, overflowY:'auto', paddingRight:4 }}>
+                          {transactions.map(tx => (
+                            <div key={tx._id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', background:'rgba(255,255,255,0.02)', padding:'8px 12px', borderRadius:8 }}>
+                              <div>
+                                <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                                  <span style={{ fontSize:10, fontWeight:600, color:tx.type==='Buy'?'#10B981':tx.type==='Sell'?'#F43F5E':'#8B5CF6', textTransform:'uppercase' }}>{tx.type}</span>
+                                  <span style={{ fontSize:11, color:'#E2E8F0' }}>{new Date(tx.date).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric',timeZone:'UTC'})}</span>
+                                </div>
+                                <p style={{ ...monoNum, fontSize:13, color:'#CBD5E1', marginTop:2 }}>
+                                  {tx.type==='Dividend' ? fmtMoney(tx.amount) : `${fmtShares(tx.shares)} @ ${fmtMoney(tx.price)}`}
+                                </p>
+                              </div>
+                              <RowIconBtn hoverColor="#F87171" onClick={() => handleDeleteTx(tx._id)}><Trash2 size={13}/></RowIconBtn>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Live price notice */}
               <div style={{ background:'rgba(var(--pt-accent-rgb),0.08)', border:'1px solid rgba(var(--pt-accent-rgb),0.2)', borderRadius:12, padding:'11px 14px', display:'flex', alignItems:'center', gap:10 }}>
                 <TrendingUp size={15} color="var(--pt-accent-light)" style={{ flexShrink:0 }}/>
@@ -1204,16 +1363,16 @@ export default function ManualTracker() {
               )}
 
               {/* Preview */}
-              {showPreview && (
+              {fEntryMethod === 'Manual' && showPreview && (
                 <div style={{ borderTop:'1px solid rgba(255,255,255,0.08)', paddingTop:16 }}>
                   <p style={{ ...sectionLabel, marginBottom:12 }}>Preview</p>
                   <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:12, background:'rgba(255,255,255,0.03)', borderRadius:12, padding:16 }}>
                     <div>
-                      <p style={{ fontSize:11, color:'#64748B', marginBottom:4 }}>Cost Basis</p>
+                      <p style={{ fontSize:11, color:'#CBD5E1', marginBottom:4 }}>Cost Basis</p>
                       <p style={{ ...monoNum, fontSize:13, fontWeight:600, color:'#CBD5E1' }}>{fmtMoney(pCost)}</p>
                     </div>
                     <div>
-                      <p style={{ fontSize:11, color:'#64748B', marginBottom:4 }}>Shares</p>
+                      <p style={{ fontSize:11, color:'#CBD5E1', marginBottom:4 }}>Shares</p>
                       <p style={{ ...monoNum, fontSize:13, fontWeight:600, color:'#CBD5E1' }}>{fmtShares(+fShares)}</p>
                     </div>
                   </div>
@@ -1226,7 +1385,7 @@ export default function ManualTracker() {
               <GhostBtn onClick={closeModal}>Cancel</GhostBtn>
               <Btn onClick={handleSave} disabled={!isValid||saving}>
                 {saving
-                  ? <><CircularProgress size={14} sx={{ color:'#fff', mr:0.5 }}/>Fetching price…</>
+                  ? <><CircularProgress size={14} sx={{ color:'var(--pt-accent-text)', mr:0.5 }}/>Fetching price…</>
                   : 'Save Position'}
               </Btn>
             </div>
@@ -1242,7 +1401,7 @@ function Btn({ children, onClick, disabled }: { children: React.ReactNode; onCli
   return (
     <button onClick={onClick} disabled={disabled} style={{
       display:'inline-flex', alignItems:'center', gap:8, padding:'10px 20px', borderRadius:12, fontSize:14, fontWeight:600,
-      color:'#fff', background:'var(--pt-accent)', border:'none', cursor:disabled?'not-allowed':'pointer',
+      color:'var(--pt-accent-text)', background:'var(--pt-accent)', border:'none', cursor:disabled?'not-allowed':'pointer',
       boxShadow:disabled?'none':'0 0 20px rgba(var(--pt-accent-rgb),0.5)', opacity:disabled?0.5:1,
       transition:'transform 0.15s, box-shadow 0.15s',
     }}
@@ -1253,25 +1412,25 @@ function Btn({ children, onClick, disabled }: { children: React.ReactNode; onCli
 }
 function GhostBtn({ children, onClick }: { children: React.ReactNode; onClick: ()=>void }) {
   return (
-    <button onClick={onClick} style={{ padding:'9px 16px', borderRadius:12, fontSize:13, color:'#94A3B8', cursor:'pointer', border:'none', background:'none', transition:'color 0.15s, background 0.15s' }}
+    <button onClick={onClick} style={{ padding:'9px 16px', borderRadius:12, fontSize:13, color:'#E2E8F0', cursor:'pointer', border:'none', background:'none', transition:'color 0.15s, background 0.15s' }}
       onMouseEnter={e => { (e.currentTarget).style.color='#F1F5F9'; (e.currentTarget).style.background='rgba(255,255,255,0.06)'; }}
-      onMouseLeave={e => { (e.currentTarget).style.color='#94A3B8'; (e.currentTarget).style.background='transparent'; }}
+      onMouseLeave={e => { (e.currentTarget).style.color='#E2E8F0'; (e.currentTarget).style.background='transparent'; }}
     >{children}</button>
   );
 }
 function IconBtn({ children, onClick }: { children: React.ReactNode; onClick: ()=>void }) {
   return (
-    <button onClick={onClick} style={{ padding:8, borderRadius:10, color:'#64748B', border:'1px solid rgba(255,255,255,0.08)', cursor:'pointer', background:'none', transition:'color 0.15s, background 0.15s', display:'flex', alignItems:'center' }}
+    <button onClick={onClick} style={{ padding:8, borderRadius:10, color:'#CBD5E1', border:'1px solid rgba(255,255,255,0.08)', cursor:'pointer', background:'none', transition:'color 0.15s, background 0.15s', display:'flex', alignItems:'center' }}
       onMouseEnter={e => { (e.currentTarget).style.color='var(--pt-accent-light)'; (e.currentTarget).style.background='rgba(255,255,255,0.06)'; }}
-      onMouseLeave={e => { (e.currentTarget).style.color='#64748B'; (e.currentTarget).style.background='transparent'; }}
+      onMouseLeave={e => { (e.currentTarget).style.color='#CBD5E1'; (e.currentTarget).style.background='transparent'; }}
     >{children}</button>
   );
 }
 function RowIconBtn({ children, onClick, hoverColor }: { children: React.ReactNode; onClick: ()=>void; hoverColor: string }) {
   return (
-    <button onClick={onClick} style={{ borderRadius:8, padding:6, color:'#64748B', cursor:'pointer', border:'none', background:'none', transition:'color 0.15s, background 0.15s', display:'flex', alignItems:'center' }}
+    <button onClick={onClick} style={{ borderRadius:8, padding:6, color:'#CBD5E1', cursor:'pointer', border:'none', background:'none', transition:'color 0.15s, background 0.15s', display:'flex', alignItems:'center' }}
       onMouseEnter={e => { (e.currentTarget).style.color=hoverColor; (e.currentTarget).style.background='rgba(255,255,255,0.08)'; }}
-      onMouseLeave={e => { (e.currentTarget).style.color='#64748B'; (e.currentTarget).style.background='transparent'; }}
+      onMouseLeave={e => { (e.currentTarget).style.color='#CBD5E1'; (e.currentTarget).style.background='transparent'; }}
     >{children}</button>
   );
 }

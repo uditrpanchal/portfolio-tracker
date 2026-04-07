@@ -66,6 +66,16 @@ export const api = {
   deletePosition: (id: string) =>
     request<{ message: string }>(`/api/tracker/${id}`, { method: 'DELETE' }),
 
+  // Transactions
+  getTransactions: (positionId: string) =>
+    request<Transaction[]>(`/api/transactions/${positionId}`),
+
+  addTransaction: (positionId: string, tx: TransactionInput) =>
+    request<{ transaction: Transaction; position: Position }>(`/api/transactions/${positionId}`, { method: 'POST', body: JSON.stringify(tx) }),
+
+  deleteTransaction: (id: string) =>
+    request<{ message: string; position: Position }>(`/api/transactions/${id}`, { method: 'DELETE' }),
+
   getRates: () => request<{ base: string; rates: Record<string, number>; updatedAt: string }>('/api/rates'),
 
   getRatings: (tickers: string[]) =>
@@ -106,6 +116,9 @@ export interface Position {
   purchasePrice: number;
   currentPrice: number;
   portfolioId?: string | null;
+  entryMethod?: 'Manual' | 'Transactions';
+  realizedGain?: number;
+  totalDividends?: number;
 }
 
 export interface PositionInput {
@@ -114,4 +127,23 @@ export interface PositionInput {
   shares: number;
   purchasePrice: number;
   portfolioId?: string | null;
+  entryMethod?: 'Manual' | 'Transactions';
+}
+
+export interface Transaction {
+  _id: string;
+  positionId: string;
+  type: 'Buy' | 'Sell' | 'Dividend' | 'DividendReinvest';
+  date: string;
+  shares: number;
+  price: number;
+  amount: number;
+}
+
+export interface TransactionInput {
+  type: 'Buy' | 'Sell' | 'Dividend' | 'DividendReinvest';
+  date: string;
+  shares?: number;
+  price?: number;
+  amount?: number;
 }
