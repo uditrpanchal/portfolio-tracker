@@ -3,6 +3,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green?logo=node.js)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-4.19-000000?logo=express)](https://expressjs.com)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose%208-47A248?logo=mongodb)](https://mongoosejs.com)
+[![Tests](https://img.shields.io/badge/tests-18%20passed-brightgreen?logo=vitest)](tests)
 
 The Express + MongoDB backend for Portfolio Tracker. Exposes a REST API consumed by the React frontend.
 
@@ -182,6 +183,9 @@ All authenticated routes require an `Authorization: Bearer <token>` header.
 |---------|-------------|
 | `npm start` | Start server with `node server.js` |
 | `npm run dev` | Start with `nodemon` (auto-restart on change) |
+| `npm test` | Run Vitest suite once |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run test:coverage` | Vitest with V8 coverage report |
 
 ---
 
@@ -221,20 +225,21 @@ PORT=5000
 
 ## 🧪 Tests
 
-No automated test suite currently. Manual smoke tests:
+**18 tests** — Vitest + Supertest + mongodb-memory-server. No real database or network calls required; an in-memory MongoDB instance is spun up per test run.
 
 ```bash
-# Health check
-curl http://localhost:5000/api/health
-
-# Verify Yahoo Finance connectivity
-node -e "require('./services/priceService').fetchPrice('AAPL').then(console.log)"
-
-# Verify FX rates
-node -e "const r=require('./routes/rates'); console.log('loaded')"
+npm test                # run once
+npm run test:watch      # watch mode
+npm run test:coverage   # V8 coverage report
 ```
 
-**Planned:** Supertest integration tests for all REST endpoints.
+| File | What's tested |
+|------|---------------|
+| `tests/health.test.js` | `GET /api/health` returns `{ ok: true }` |
+| `tests/auth.test.js` | Register, login, duplicate email (409), bad password (401), missing fields (400), `GET /api/auth/me` |
+| `tests/tracker.test.js` | Auth guard (401), positions CRUD (create/read/update/delete), 422 on invalid ticker, cross-user 404 |
+
+**Tools:** Vitest · Supertest · mongodb-memory-server · @vitest/coverage-v8
 
 ---
 

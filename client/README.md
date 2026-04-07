@@ -4,6 +4,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite)](https://vitejs.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org)
 [![MUI](https://img.shields.io/badge/MUI-v7-007FFF?logo=mui)](https://mui.com)
+[![Tests](https://img.shields.io/badge/tests-12%20passed-brightgreen?logo=vitest)](src/__tests__)
 
 The React + Vite + TypeScript frontend for Portfolio Tracker.
 
@@ -66,6 +67,9 @@ Each theme sets a palette of CSS custom properties (`--pt-bg`, `--pt-surface`, `
 | `npm run build` | Type-check (`tsc -b`) then bundle (`vite build`) |
 | `npm run lint` | ESLint check |
 | `npm run preview` | Serve production build locally |
+| `npm test` | Run Vitest suite once |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run test:coverage` | Vitest with V8 coverage report |
 
 ---
 
@@ -97,15 +101,27 @@ VITE_GOOGLE_CLIENT_ID=<your-google-oauth-client-id>
 
 ## 🧪 Tests
 
-There is no automated test suite currently. The project is manually tested end-to-end.
+**12 tests** — Vitest + @testing-library/react + jsdom. No real network calls or backend required.
 
-**Planned:** Vitest + React Testing Library for component unit tests.
+```bash
+npm test                # run once
+npm run test:watch      # watch mode
+npm run test:coverage   # V8 coverage report
+```
+
+| File | What's tested |
+|------|---------------|
+| `src/__tests__/api/client.test.ts` | Authorization header injection, error message propagation, query parameter building |
+| `src/__tests__/contexts/AuthContext.test.tsx` | Login, logout, token persistence in localStorage, invalid token cleanup, `api.me` on mount |
+
+**Tools:** Vitest · @testing-library/react · @testing-library/jest-dom · jsdom
 
 ---
 
 ## 🗺️ Roadmap
 
-- [ ] Vitest unit tests for ManualTracker and context hooks
+- [x] Vitest unit tests for API client and AuthContext
+- [ ] Component tests for ManualTracker (positions table, charts)
 - [ ] Mobile-responsive table / card layout
 - [ ] CSV import (Wealthsimple export format)
 - [ ] Performance chart — historical portfolio value (time-series)

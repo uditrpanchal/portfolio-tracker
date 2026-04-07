@@ -4,6 +4,7 @@
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green?logo=node.js)](https://nodejs.org)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
 [![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-47A248?logo=mongodb)](https://www.mongodb.com)
+[![Tests](https://img.shields.io/badge/tests-30%20passed-brightgreen?logo=vitest)](server/tests)
 
 A full-stack personal investment portfolio tracker with live market prices, multi-currency support, dividend tracking, analyst ratings, and named portfolio accounts (TFSA, FHSA, RRSP, etc.).
 
@@ -130,27 +131,39 @@ See [`server/README.md`](server/README.md) for full endpoint reference.
 
 ## 🧪 Tests
 
-There is no automated test suite yet. Manual testing procedure:
+The project uses **[Vitest](https://vitest.dev/)** on both sides of the stack — 30 tests total, no external services required (the server tests use an in-memory MongoDB).
 
 ```bash
-# Verify backend is healthy
-curl http://localhost:5000/api/health
-# Expected: {"ok":true}
+# Run server tests (18)
+cd server && npm test
 
-# Verify live price fetch works
-cd server
-node -e "require('./services/priceService').fetchPrice('AAPL').then(console.log)"
+# Run client tests (12)
+cd client && npm test
+
+# Coverage reports
+cd server && npm run test:coverage
+cd client && npm run test:coverage
 ```
+
+| Layer | File | Tests |
+|-------|------|-------|
+| Server | `tests/health.test.js` | `GET /api/health` |
+| Server | `tests/auth.test.js` | Register, login, duplicate email, bad credentials, `/me` |
+| Server | `tests/tracker.test.js` | Positions CRUD, auth guard, 422 invalid ticker, cross-user 404 |
+| Client | `src/__tests__/api/client.test.ts` | Auth header, error propagation, query params |
+| Client | `src/__tests__/contexts/AuthContext.test.tsx` | Login, logout, token persistence, invalid token cleanup |
+
+**Tools used:** Vitest · Supertest · mongodb-memory-server · @testing-library/react
 
 ---
 
 ## 🗺️ Roadmap
 
+- [x] Automated test suite (Vitest + Supertest + mongodb-memory-server)
 - [ ] CSV import for DRIP reinvestment trades (Wealthsimple export)
 - [ ] Historical performance chart (time-series portfolio value)
 - [ ] Dark/light mode per-component MUI integration
 - [ ] Mobile-responsive layout
-- [ ] Automated test suite (Vitest + Supertest)
 - [ ] Docker compose for one-command startup
 
 ---
