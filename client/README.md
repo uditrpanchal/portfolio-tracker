@@ -1,75 +1,111 @@
-# React + TypeScript + Vite
+# Client — React Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+[![React](https://img.shields.io/badge/React-19.2.4-61DAFB?logo=react)](https://react.dev)
+[![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite)](https://vitejs.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-blue?logo=typescript)](https://www.typescriptlang.org)
+[![MUI](https://img.shields.io/badge/MUI-v7-007FFF?logo=mui)](https://mui.com)
 
-Currently, two official plugins are available:
+The React + Vite + TypeScript frontend for Portfolio Tracker.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+---
 
-## React Compiler
+## 📁 Structure
 
-The React Compiler is enabled on this template. See [this documentation](https://react.dev/learn/react-compiler) for more information.
-
-Note: This will impact Vite dev & build performances.
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+client/
+├── public/
+├── src/
+│   ├── api/
+│   │   └── client.ts            # All typed fetch wrappers + TypeScript interfaces
+│   ├── components/
+│   │   ├── Layout/
+│   │   │   ├── Layout.tsx       # App shell, sidebar toggle, CSS variable–themed
+│   │   │   └── Sidebar.tsx      # Navigation links, theme picker, user info + logout
+│   │   └── Portfolio/
+│   │       └── ManualTracker.tsx  # Main dashboard: positions table, charts, dividends, ratings
+│   ├── contexts/
+│   │   ├── AuthContext.tsx      # JWT state, login/logout helpers, persists to localStorage
+│   │   └── ThemeContext.tsx     # 6 themes, CSS custom properties, MUI ThemeProvider
+│   ├── pages/
+│   │   ├── SignIn.tsx
+│   │   └── SignUp.tsx
+│   ├── App.tsx                  # React Router routes + ProtectedRoute
+│   ├── index.css                # @keyframes: rowIn, rowOut, valuePop, modalFade, spin
+│   └── main.tsx                 # Providers: GoogleOAuthProvider → AppThemeProvider → BrowserRouter → AuthProvider
+├── .env                         # VITE_API_URL, VITE_GOOGLE_CLIENT_ID  (git-ignored)
+├── index.html
+├── package.json
+├── tsconfig.json
+└── vite.config.ts               # proxy /api → http://localhost:5000, strictPort: 5177
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 🎨 Theme System
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Six themes are available (settable from the sidebar):
+
+| Theme | Class |
+|-------|-------|
+| Midnight Blue | `theme-midnight-blue` |
+| Obsidian | `theme-obsidian` |
+| Aurora | `theme-aurora` |
+| Forest | `theme-forest` |
+| Sunset | `theme-sunset` |
+| Noir | `theme-noir` |
+
+Each theme sets a palette of CSS custom properties (`--pt-bg`, `--pt-surface`, `--pt-primary`, `--pt-text`, etc.) that are consumed by both raw CSS and the MUI `ThemeProvider` instance.
+
+---
+
+## 🖥️ Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start Vite dev server on port 5177 |
+| `npm run build` | Type-check (`tsc -b`) then bundle (`vite build`) |
+| `npm run lint` | ESLint check |
+| `npm run preview` | Serve production build locally |
+
+---
+
+## 🔑 Environment Variables
+
+Create `client/.env`:
+
+```env
+VITE_API_URL=http://localhost:5000
+VITE_GOOGLE_CLIENT_ID=<your-google-oauth-client-id>
 ```
+
+> **VITE_GOOGLE_CLIENT_ID** must match the value used in `server/.env` and must have `http://localhost:5177` listed as an authorised JavaScript origin in Google Cloud Console.
+
+---
+
+## 📦 Key Dependencies
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| react | 19.2.4 | UI |
+| @mui/material | 7.3.9 | Component library |
+| recharts | 3.8.1 | Portfolio charts (Pie, Bar) |
+| react-router-dom | 7.14.0 | Client-side routing |
+| @react-oauth/google | 0.13.4 | Google One-Tap OAuth |
+| lucide-react | 1.7.0 | Icons |
+
+---
+
+## 🧪 Tests
+
+There is no automated test suite currently. The project is manually tested end-to-end.
+
+**Planned:** Vitest + React Testing Library for component unit tests.
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] Vitest unit tests for ManualTracker and context hooks
+- [ ] Mobile-responsive table / card layout
+- [ ] CSV import (Wealthsimple export format)
+- [ ] Performance chart — historical portfolio value (time-series)
