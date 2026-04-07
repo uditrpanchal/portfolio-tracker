@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout/Layout';
 import ManualTracker from './components/Portfolio/ManualTracker';
+import BudgetPlanner from './components/Budget/BudgetPlanner';
 import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -16,6 +17,7 @@ function App() {
       <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route path="/" element={<Navigate to="/investment/tracker" replace />} />
         <Route path="investment/tracker" element={<ManualTracker />} />
+        <Route path="budget/planner" element={<BudgetPlanner />} />
       </Route>
 
       {/* Fallback */}

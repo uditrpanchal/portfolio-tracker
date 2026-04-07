@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, TableProperties, TrendingUp, LogOut, Palette, Check, Pencil, X } from 'lucide-react';
+import { LayoutDashboard, TableProperties, TrendingUp, LogOut, Palette, Check, Pencil, X, Wallet } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAppTheme, APP_THEMES } from '../../contexts/ThemeContext';
 
 const NAV = [
   { section: 'Dashboard', items: [{ id: 'overview', label: 'Overview', icon: LayoutDashboard, to: '/' }] },
   { section: 'Investment', items: [{ id: 'tracker', label: 'My Tracker', icon: TableProperties, to: '/investment/tracker' }] },
+  { section: 'Budget', items: [{ id: 'budget', label: 'Budget Planner', icon: Wallet, to: '/budget/planner' }] },
 ];
 
 export default function Sidebar() {
