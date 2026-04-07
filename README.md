@@ -8,6 +8,8 @@
 
 A full-stack personal investment portfolio tracker with live market prices, multi-currency support, dividend tracking, analyst ratings, and named portfolio accounts (TFSA, FHSA, RRSP, etc.).
 
+![Portfolio Tracker](images/Portfolio_Tracker.png)
+
 ---
 
 ## ✨ Features
