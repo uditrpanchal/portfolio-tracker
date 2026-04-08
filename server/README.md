@@ -18,21 +18,26 @@ server/
 ├── models/
 │   ├── User.js             # email, password (bcrypt), googleId, name
 │   ├── Portfolio.js        # userId, name, currency (default: CAD)
-│   └── Position.js         # userId, portfolioId, ticker, securityType, shares, purchasePrice, currentPrice
+│   ├── Position.js         # userId, portfolioId, ticker, shares, purchasePrice,
+│   │                        #   currentPrice, entryMethod, realizedGain, totalDividends, totalInvested
+│   └── Transaction.js      # userId, positionId, type, date, shares, price, amount
 ├── routes/
 │   ├── auth.js             # /api/auth  — register, login, Google OAuth
-│   ├── tracker.js          # /api/tracker — positions CRUD + live price refresh
+│   ├── tracker.js          # /api/tracker — positions CRUD + live price refresh + backfill
 │   ├── portfolios.js       # /api/portfolios — named portfolio CRUD
+│   ├── transactions.js     # /api/transactions — Buy/Sell/Dividend ledger per position
+│   ├── history.js          # /api/history — daily portfolio value time series
 │   ├── rates.js            # /api/rates — FX rates (1h in-memory cache)
 │   ├── mstar.js            # /api/ratings — analyst consensus (4h cache)
 │   └── dividends.js        # /api/dividends — dividend info + ex-div dates (4h cache)
 ├── services/
-│   ├── priceService.js     # fetchPrice / fetchPrices via yahoo-finance2 quoteSummary
+│   ├── priceService.js     # fetchPrice / fetchPrices via yahoo-finance2 quote()
+│   ├── positionService.js  # recalculatePosition — shared avg-cost replay logic
 │   ├── ratingsService.js   # analyst consensus (Strong Buy…Strong Sell) via financialData
 │   └── dividendService.js  # dividendRate, yield, exDivDate, YTD via summaryDetail + chart()
 ├── .env                    # secrets — never committed (see .gitignore)
 ├── package.json
-└── server.js               # Express app, CORS, route registration
+└── server.js               # Entry point: connects MongoDB, starts Express
 ```
 
 ---
@@ -78,6 +83,52 @@ All authenticated routes require an `Authorization: Bearer <token>` header.
   "shares": 10,
   "purchasePrice": 175.00,
   "portfolioId": "<portfolio-object-id>"
+}
+```
+
+---
+
+### Transactions
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|--------------|
+| `GET` | `/api/transactions/:positionId` | JWT | List all transactions for a position (newest first) |
+| `POST` | `/api/transactions/:positionId` | JWT | Add a transaction; recalculates position fields |
+| `DELETE` | `/api/transactions/:id` | JWT | Remove a transaction; recalculates position fields |
+
+**POST body:**
+```json
+{
+  "type": "Buy",
+  "date": "2026-04-07",
+  "shares": 15,
+  "price": 22.73,
+  "amount": 0
+}
+```
+`type` values: `Buy` | `Sell` | `Dividend` | `DividendReinvest`  
+For `Dividend` only `amount` is required (shares/price ignored).  
+
+**Response:** `{ transaction: <Transaction>, position: <Position> }` — both updated atomically.
+
+---
+
+### Performance History
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|--------------|
+| `GET` | `/api/history` | JWT | Daily `{ date, portfolioValue, netDeposits, totalInvested }` from first transaction to today |
+| `GET` | `/api/history?portfolioId=xxx` | JWT | Same, scoped to one portfolio |
+
+Builds the series by replaying all transactions chronologically against `yahoo-finance2 chart()` daily prices. Weekends/holidays are forward-filled from the last known closing price.
+
+**Response:**
+```json
+{
+  "data": [
+    { "date": "2026-04-01", "portfolioValue": 340.95, "netDeposits": 340.95, "totalInvested": 340.95 },
+    { "date": "2026-04-07", "portfolioValue": 13.80,  "netDeposits": 0,      "totalInvested": 340.95 }
+  ]
 }
 ```
 
@@ -166,17 +217,31 @@ All authenticated routes require an `Authorization: Bearer <token>` header.
 ```js
 {
   userId:         ObjectId (ref User),
-  portfolioId:    ObjectId (ref Portfolio),
-  ticker:         String,
-  securityType:   String ("Stock" | "ETF" | "Mutual Fund" | "Crypto" | "Other"),
-  shares:         Number,
-  purchasePrice:  Number,
-  currentPrice:   Number (populated at query time)
+  portfolioId:    ObjectId (ref Portfolio, nullable),
+  ticker:         String (uppercase),
+  securityType:   String ("Stock" | "ETF" | "International" | "Crypto" | "Bond"),
+  shares:         Number,           // current open shares (recalculated from transactions)
+  purchasePrice:  Number,           // avg cost per share of open position
+  currentPrice:   Number,           // populated/refreshed at query time
+  entryMethod:    String ("Manual" | "Transactions"),
+  realizedGain:   Number,           // cumulative (proceeds − cost) of sold shares
+  totalDividends: Number,           // cumulative dividend cash received
+  totalInvested:  Number            // cumulative BUY cost (never decreases — return % denominator)
 }
 ```
 
-> **Note on Client-Side Features**  
-> Certain features like the **Budget Planner** currently rely entirely on browser `localStorage` (key: `pt_budget_v1`) to securely store daily expenses and monthly categorical budgets without involving the backend DB. Thus, there are no endpoints exposed here for creating/fetching budgets.
+### Transaction
+```js
+{
+  userId:     ObjectId (ref User),
+  positionId: ObjectId (ref Position),
+  type:       String ("Buy" | "Sell" | "Dividend" | "DividendReinvest"),
+  date:       Date,
+  shares:     Number,
+  price:      Number,
+  amount:     Number   // used for Dividend cash amount
+}
+```
 
 ---
 
@@ -246,10 +311,17 @@ npm run test:coverage   # V8 coverage report
 
 ---
 
+## � Notes
+
+- The **Budget Planner** stores all data in browser `localStorage` (key: `pt_budget_v1`) — there are no backend endpoints for it
+- `recalculatePosition` in `services/positionService.js` is shared by both `transactions.js` (on add/delete) and `tracker.js` (one-time backfill for positions saved before the `totalInvested` field was introduced)
+
+---
+
 ## 🔒 Security Notes
 
 - All secrets are stored in `.env` which is listed in `.gitignore` — never commit it
 - JWT tokens expire after **7 days**; stored client-side as `pt_token` in `localStorage`
 - Passwords are hashed with **bcrypt** (salt rounds: 10) before storage — plaintext is never persisted
 - Google ID tokens are verified server-side with `google-auth-library` before trusting claims
-- All mutating routes (positions, portfolios) are guarded by the JWT middleware and scope queries to the authenticated `userId`
+- All mutating routes (positions, portfolios, transactions) are guarded by the JWT middleware and scope queries to the authenticated `userId`

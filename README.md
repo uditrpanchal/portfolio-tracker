@@ -15,12 +15,15 @@ A full-stack personal investment portfolio tracker with live market prices, mult
 ## ✨ Features
 
 - **Live prices** — auto-fetched from Yahoo Finance on every load and refresh
+- **Performance chart** — Wealthsimple-style area chart of portfolio value vs net deposits over time; range buttons 1W · 1M · 3M · 6M · 1Y · 2Y · 3Y · 4Y · 5Y · All with all-time and period gain stats
+- **Transaction tracking** — per-position Buy / Sell / Dividend / Dividend Reinvest ledger with automatic cost-basis (FIFO avg-cost), realized gain, and `totalInvested` recalculation
 - **Budget Planner** — Comprehensive monthly budgeting, daily expense logging with carry-forward calculations, charts, and CSV/PDF export
 - **Named portfolios** — create TFSA, FHSA, RRSP, or any custom account name
 - **Multi-currency** — per-portfolio currency selection (CAD, USD, EUR, GBP, JPY, AUD, CHF, INR, HKD) with real-time FX conversion on the All tab
 - **Dividends** — upcoming ex-dividend dates, annual rate/yield, YTD income, and projected annual income per position
 - **Analyst ratings** — consensus rating (Strong Buy → Strong Sell) with score and analyst count via Yahoo Finance
 - **Charts** — Portfolio Mix (donut), Returns (bar), Cost vs Value (grouped bar)
+- **Closed-position returns** — fully-sold positions correctly contribute realized gain to Portfolio Value, Return $, and Return %
 - **Themes** — 6 built-in themes: Midnight Blue, Obsidian, Aurora, Forest, Sunset, Noir
 - **Google OAuth** — sign in with Google or email/password
 
@@ -42,9 +45,9 @@ portfolio-tracker/
 │   └── README.md
 ├── server/                  # Express + MongoDB backend
 │   ├── middleware/          # JWT auth middleware
-│   ├── models/              # Mongoose schemas (User, Portfolio, Position)
+│   ├── models/              # Mongoose schemas (User, Portfolio, Position, Transaction)
 │   ├── routes/              # REST API routes
-│   ├── services/            # Yahoo Finance, dividends, ratings, price services
+│   ├── services/            # Yahoo Finance, dividends, ratings, price, position services
 │   └── README.md
 ├── .gitignore
 ├── LICENSE
@@ -127,6 +130,8 @@ See [`server/README.md`](server/README.md) for full endpoint reference.
 | `GET` | `/api/tracker` | Get all positions (with live prices) |
 | `POST` | `/api/tracker` | Add a position (auto-fetches price) |
 | `GET` | `/api/portfolios` | List named portfolios |
+| `GET/POST/DELETE` | `/api/transactions/:positionId` | Transaction ledger per position |
+| `GET` | `/api/history` | Daily portfolio value + deposits time series |
 | `GET` | `/api/rates` | FX rates (USD base, 1h cache) |
 | `GET` | `/api/ratings` | Analyst consensus ratings |
 | `GET` | `/api/dividends` | Dividend info + ex-div dates |
@@ -165,9 +170,11 @@ cd client && npm run test:coverage
 
 - [x] Automated test suite (Vitest + Supertest + mongodb-memory-server)
 - [x] Budget Planner — monthly categories, daily expense log, carry-forward, CSV & PDF export
+- [x] Transaction ledger — Buy / Sell / Dividend / DividendReinvest with avg-cost realized gain
+- [x] Historical performance chart — daily portfolio value vs net deposits, 10 range options
+- [x] Closed-position returns — realized gain flows into Portfolio Value and Return %
 - [ ] CSV import for DRIP reinvestment trades (Wealthsimple export)
-- [ ] Historical performance chart (time-series portfolio value)
-- [ ] Dark/light mode per-component MUI integration
+- [ ] Component tests for ManualTracker (positions table, chart)
 - [ ] Mobile-responsive layout
 - [ ] Docker compose for one-command startup
 

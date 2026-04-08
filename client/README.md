@@ -24,7 +24,8 @@ client/
 │   │   │   ├── Layout.tsx       # App shell, sidebar toggle, CSS variable–themed
 │   │   │   └── Sidebar.tsx      # Navigation links, theme picker, user info + logout
 │   │   └── Portfolio/
-│   │       └── ManualTracker.tsx  # Main dashboard: positions table, charts, dividends, ratings
+│   │       └── ManualTracker.tsx  # Main dashboard: performance chart, positions table,
+│   │                              #   transaction modal, portfolio mix/returns/cost charts, dividends
 │   ├── contexts/
 │   │   ├── AuthContext.tsx      # JWT state, login/logout helpers, persists to localStorage
 │   │   └── ThemeContext.tsx     # 6 themes, CSS custom properties, MUI ThemeProvider
@@ -93,7 +94,7 @@ VITE_GOOGLE_CLIENT_ID=<your-google-oauth-client-id>
 |---------|---------|---------|
 | react | 19.2.4 | UI |
 | @mui/material | 7.3.9 | Component library |
-| recharts | 3.8.1 | Portfolio charts (Pie, Bar) |
+| recharts | 3.8.1 | Charts: Pie, Bar, AreaChart (performance history) |
 | react-router-dom | 7.14.0 | Client-side routing |
 | @react-oauth/google | 0.13.4 | Google One-Tap OAuth |
 | lucide-react | 1.7.0 | Icons |
@@ -124,7 +125,9 @@ npm run test:coverage   # V8 coverage report
 
 - [x] Vitest unit tests for API client and AuthContext
 - [x] Budget Planner — monthly income/expense categories, daily expense log, carry-forward, donut chart, budget adherence bars, CSV & PDF export
+- [x] Transaction ledger — Buy / Sell / Dividend / DividendReinvest modal per position
+- [x] Historical performance chart — area chart with 10 time ranges, all-time and period gain stats
+- [x] Closed-position returns — realized gain shown in Portfolio Value, Return $, Return %
 - [ ] Component tests for ManualTracker (positions table, charts)
 - [ ] Mobile-responsive table / card layout
 - [ ] CSV import (Wealthsimple export format)
-- [ ] Performance chart — historical portfolio value (time-series)
