@@ -6,6 +6,7 @@ import {
 import {
   PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis,
   Tooltip, ResponsiveContainer, Legend, ReferenceLine, CartesianGrid,
+  AreaChart, Area,
 } from 'recharts';
 import {
   CircularProgress, Snackbar, Alert,
@@ -74,9 +75,23 @@ function tickerColor(t: string) {
   return LOGO_COLORS[h % LOGO_COLORS.length];
 }
 function derive(p: Position): Derived {
-  const costBasis = p.shares * p.purchasePrice;
-  const marketValue = p.shares * p.currentPrice;
-  const totalReturnCAD = marketValue - costBasis + (p.realizedGain || 0) + (p.totalDividends || 0);
+  const costBasis  = p.shares * p.purchasePrice;
+  const rawMktVal  = p.shares * p.currentPrice;
+
+  // A fully closed Transactions position (all shares sold) has no remaining market value,
+  // but the realized cash profit is still "in the portfolio". Represent it as market value
+  // so that Portfolio Value and all totals reflect what the user actually has.
+  const isClosedTx = p.shares === 0 && (p.totalInvested ?? 0) > 0;
+  const marketValue = isClosedTx
+    ? Math.max(0, (p.realizedGain || 0) + (p.totalDividends || 0))
+    : rawMktVal;
+
+  // For closed positions realizedGain is already net-of-cost, so no need to subtract costBasis.
+  // For open positions use the standard formula (avoids double-counting).
+  const totalReturnCAD = isClosedTx
+    ? (p.realizedGain || 0) + (p.totalDividends || 0)
+    : rawMktVal - costBasis + (p.realizedGain || 0) + (p.totalDividends || 0);
+
   const denominator = (p.totalInvested != null && p.totalInvested > 0) ? p.totalInvested : costBasis;
   const totalReturnPct = denominator !== 0 ? (totalReturnCAD / denominator) * 100 : 0;
   return { ...p, costBasis, marketValue, totalReturnCAD, totalReturnPct };
@@ -133,6 +148,39 @@ function ChartTip({ active, payload, label }: any) {
     <div style={{ background:'var(--pt-sidebar)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'12px 16px', backdropFilter:'blur(12px)', fontFamily:"'JetBrains Mono',monospace", fontSize:12 }}>
       <p style={{ color:'#E2E8F0', marginBottom:6 }}>{label}</p>
       {payload.map((p: any) => <p key={p.name} style={{ color:p.color, margin:'2px 0' }}>{p.name}: {fmtCAD(p.value)}</p>)}
+    </div>
+  );
+}
+
+/* ─── HistoryTooltip ─── */
+function HistoryTooltip({ active, payload, label, fmt }: any) {
+  if (!active || !payload?.length) return null;
+  const pv            = payload.find((p: any) => p.dataKey === 'portfolioValue')?.value ?? 0;
+  const nd            = payload.find((p: any) => p.dataKey === 'netDeposits')?.value ?? 0;
+  const totalInvested = payload[0]?.payload?.totalInvested ?? nd;
+  const gain          = pv - nd;
+  const gainPct       = totalInvested > 0 ? (gain / totalInvested) * 100 : 0;
+  const d = new Date(label + 'T00:00:00');
+  const dateStr = d.toLocaleDateString('en-CA', { weekday:'short', month:'short', day:'numeric', year:'numeric' });
+  return (
+    <div style={{ background:'var(--pt-sidebar)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:12, padding:'14px 18px', backdropFilter:'blur(12px)', fontFamily:"'JetBrains Mono',monospace", fontSize:12, minWidth:210 }}>
+      <p style={{ color:'#94A3B8', marginBottom:10, fontSize:11, fontFamily:"'Inter',sans-serif" }}>{dateStr}</p>
+      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', gap:20 }}>
+          <span style={{ color:'#818CF8' }}>Portfolio</span>
+          <span style={{ color:'#F1F5F9', fontWeight:700 }}>{fmt(pv)}</span>
+        </div>
+        <div style={{ display:'flex', justifyContent:'space-between', gap:20 }}>
+          <span style={{ color:'#94A3B8' }}>Net Deposits</span>
+          <span style={{ color:'#CBD5E1' }}>{fmt(nd)}</span>
+        </div>
+        <div style={{ borderTop:'1px solid rgba(255,255,255,0.08)', paddingTop:6, display:'flex', justifyContent:'space-between', gap:20 }}>
+          <span style={{ color:gain>=0?'#10B981':'#F43F5E' }}>Total Gain</span>
+          <span style={{ color:gain>=0?'#10B981':'#F43F5E', fontWeight:700 }}>
+            {gain>=0?'+':''}{fmt(gain)} ({gain>=0?'+':''}{gainPct.toFixed(2)}%)
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -199,6 +247,12 @@ export default function ManualTracker() {
   } | null;
   const [dividendData,    setDividendData]    = useState<Record<string, DividendInfo>>({});
   const [dividendLoading, setDividendLoading] = useState(false);
+
+  /* history chart */
+  type HistoryPoint = { date: string; portfolioValue: number; netDeposits: number; totalInvested: number };
+  const [historyData,    setHistoryData]    = useState<HistoryPoint[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyRange,   setHistoryRange]   = useState<'1W'|'1M'|'3M'|'6M'|'1Y'|'2Y'|'3Y'|'4Y'|'5Y'|'All'>('1Y');
 
   /* form */
   const [fTicker,   setFTicker]   = useState('');
@@ -310,6 +364,16 @@ export default function ManualTracker() {
       .catch(() => {})
       .finally(() => setDividendLoading(false));
   }, [positions.length]);
+
+  /* ── fetch performance history ── */
+  useEffect(() => {
+    setHistoryLoading(true);
+    setHistoryData([]);
+    api.getHistory(activePortfolio ?? undefined)
+      .then(d => setHistoryData(d.data))
+      .catch(() => setHistoryData([]))
+      .finally(() => setHistoryLoading(false));
+  }, [activePortfolio]);
 
   /* ── fetch FX rates via our own backend (yahoo-finance2 currency pairs) ── */
   useEffect(() => {
@@ -445,6 +509,16 @@ export default function ManualTracker() {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
+  /* ── history filtered by selected range ── */
+  const filteredHistory = useMemo(() => {
+    if (historyRange === 'All') return historyData;
+    const days: Record<string, number> = { '1W': 7, '1M': 30, '3M': 90, '6M': 180, '1Y': 365, '2Y': 730, '3Y': 1095, '4Y': 1461, '5Y': 1826 };
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days[historyRange]);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    return historyData.filter(d => d.date >= cutoffStr);
+  }, [historyData, historyRange]);
+
   /* ── modal ── */
   const openAdd = () => {
     setEditId(null); setFTicker(''); setFType('Stock'); setFShares(''); setFPurchase('');
@@ -554,6 +628,10 @@ export default function ManualTracker() {
       }); setSnack({ msg: 'Prices refreshed.', severity: 'success' }); })
       .catch(() => setSnack({ msg: 'Failed to refresh prices.', severity: 'error' }))
       .finally(() => setRefreshing(false));
+    // also refresh history
+    api.getHistory(activePortfolio ?? undefined)
+      .then(d => setHistoryData(d.data))
+      .catch(() => {});
   }, [activePortfolio]);
 
   /* ── preview ── */
@@ -757,6 +835,126 @@ export default function ManualTracker() {
           ><FolderPlus size={13}/> New Portfolio</button>
         )}
       </div>
+
+      {/* ══ PERFORMANCE CHART ══ */}
+      {(historyLoading || historyData.length > 0) && (() => {
+        const last  = filteredHistory[filteredHistory.length - 1];
+        const first = filteredHistory[0];
+        const allTimeGain    = last ? last.portfolioValue - last.netDeposits : 0;
+        const allTimeGainPct = (last && last.totalInvested > 0) ? (allTimeGain / last.totalInvested) * 100 : 0;
+        // Compare net-gain (portfolioValue − costBasis) at first vs last, not raw values.
+        // This prevents a fully-sold position from showing −$326 "loss" (return-of-capital
+        // is not a loss — only the profit/loss matters for the period stat).
+        const firstNetGain   = first ? first.portfolioValue - first.netDeposits : 0;
+        const lastNetGain    = last  ? last.portfolioValue  - last.netDeposits  : 0;
+        const periodChange    = (first && last && first !== last) ? lastNetGain - firstNetGain : 0;
+        const periodChangePct = (last && last.totalInvested > 0) ? (periodChange / last.totalInvested) * 100 : 0;
+
+        const fmtXAxis = (dateStr: string) => {
+          const d = new Date(dateStr + 'T00:00:00');
+          if (historyRange === '1W' || historyRange === '1M') return d.toLocaleDateString('en-CA', { month:'short', day:'numeric' });
+          if (historyRange === 'All' || historyRange === '2Y' || historyRange === '3Y' || historyRange === '4Y' || historyRange === '5Y') return d.toLocaleDateString('en-CA', { month:'short', year:'2-digit' });
+          return d.toLocaleDateString('en-CA', { month:'short', day:'numeric' });
+        };
+
+        return (
+          <div style={{ ...glass, padding:24 }}>
+            {/* ── Header row ── */}
+            <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, flexWrap:'wrap', marginBottom:20 }}>
+              <div>
+                <p style={sectionLabel}>Portfolio Performance</p>
+                {!historyLoading && last && (
+                  <div style={{ marginTop:8, display:'flex', alignItems:'baseline', gap:14, flexWrap:'wrap' }}>
+                    <span style={{ ...monoNum, fontSize:26, fontWeight:700, color:'#F1F5F9' }}>{fmtMoney(last.portfolioValue)}</span>
+                    <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                      <span style={{ ...monoNum, fontSize:12, color:allTimeGain>=0?'#10B981':'#F43F5E' }}>
+                        {allTimeGain>=0?'+':''}{fmtMoney(allTimeGain)} ({allTimeGain>=0?'+':''}{allTimeGainPct.toFixed(2)}%) all-time
+                      </span>
+                      {historyRange !== 'All' && periodChange !== 0 && (
+                        <span style={{ ...monoNum, fontSize:11, color:periodChange>=0?'#34D399':'#F87171' }}>
+                          {periodChange>=0?'+':''}{fmtMoney(periodChange)} ({periodChange>=0?'+':''}{periodChangePct.toFixed(2)}%) {historyRange}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Range buttons */}
+              <div style={{ display:'flex', gap:4, background:'rgba(255,255,255,0.04)', borderRadius:10, padding:4, flexWrap:'wrap' }}>
+                {(['1W','1M','3M','6M','1Y','2Y','3Y','4Y','5Y','All'] as const).map(r => (
+                  <button key={r} onClick={() => setHistoryRange(r)}
+                    style={{ padding:'5px 10px', borderRadius:7, border:'none', fontSize:11, fontWeight:600, cursor:'pointer', transition:'all 0.15s',
+                      background: historyRange===r ? 'var(--pt-accent)' : 'transparent',
+                      color:      historyRange===r ? 'var(--pt-accent-text)' : '#94A3B8',
+                    }}>
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Chart body ── */}
+            {historyLoading ? (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:260, gap:10 }}>
+                <CircularProgress size={20} sx={{ color:'var(--pt-accent)' }}/>
+                <span style={{ fontSize:13, color:'#94A3B8' }}>Loading history…</span>
+              </div>
+            ) : filteredHistory.length < 2 ? (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:260, color:'#94A3B8', fontSize:13 }}>
+                Not enough data for this range
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={filteredHistory} margin={{ top:8, right:4, bottom:0, left:4 }}>
+                  <defs>
+                    <linearGradient id="pvGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#6366F1" stopOpacity={0.35}/>
+                      <stop offset="95%" stopColor="#6366F1" stopOpacity={0.02}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false}/>
+                  <XAxis dataKey="date" tick={tickAxis} axisLine={false} tickLine={false}
+                    tickFormatter={fmtXAxis} interval="preserveStartEnd" minTickGap={40}/>
+                  <YAxis tick={tickAxis} axisLine={false} tickLine={false} tickFormatter={fmtCmp} width={70}/>
+                  <Tooltip
+                    content={<HistoryTooltip fmt={fmtMoney}/>}
+                    wrapperStyle={{ outline:'none', background:'transparent', border:'none', boxShadow:'none', padding:0 }}
+                    cursor={{ stroke:'rgba(255,255,255,0.15)', strokeWidth:1, strokeDasharray:'4 4' }}
+                  />
+                  {/* Net Deposits — dashed line, no fill */}
+                  <Area type="monotone" dataKey="netDeposits" name="Net Deposits"
+                    stroke="#CBD5E1" strokeWidth={1.5} strokeDasharray="5 4"
+                    fill="none" fillOpacity={0} dot={false}
+                    activeDot={{ r:3, fill:'#CBD5E1', stroke:'#1E293B', strokeWidth:2 }}
+                    isAnimationActive animationDuration={800} animationEasing="ease-out"
+                  />
+                  {/* Portfolio Value — gradient area */}
+                  <Area type="monotone" dataKey="portfolioValue" name="Portfolio Value"
+                    stroke="#6366F1" strokeWidth={2}
+                    fill="url(#pvGrad)" dot={false}
+                    activeDot={{ r:4, fill:'#818CF8', stroke:'#1E293B', strokeWidth:2 }}
+                    isAnimationActive animationDuration={900} animationEasing="ease-out"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+
+            {/* ── Legend ── */}
+            {!historyLoading && filteredHistory.length >= 2 && (
+              <div style={{ display:'flex', gap:20, marginTop:14, justifyContent:'center' }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <div style={{ width:22, height:3, background:'#6366F1', borderRadius:2 }}/>
+                  <span style={{ fontSize:11, color:'#94A3B8' }}>Portfolio Value</span>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <svg width="22" height="3"><line x1="0" y1="1.5" x2="22" y2="1.5" stroke="#CBD5E1" strokeWidth="1.5" strokeDasharray="5 4"/></svg>
+                  <span style={{ fontSize:11, color:'#94A3B8' }}>Net Deposits</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ══ HERO ══ */}
       <div style={{ ...glass, padding:24, display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'space-between', gap:16, backgroundImage:'linear-gradient(135deg, rgba(var(--pt-accent-rgb),0.15) 0%, transparent 60%)' }}>

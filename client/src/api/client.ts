@@ -94,6 +94,11 @@ export const api = {
       ytdPerShare: number;
       frequency: number;
     } | null>>(`/api/dividends?tickers=${tickers.map(encodeURIComponent).join(',')}`),
+
+  getHistory: (portfolioId?: string) =>
+    request<{ data: { date: string; portfolioValue: number; netDeposits: number; totalInvested: number }[] }>(
+      '/api/history' + (portfolioId ? `?portfolioId=${portfolioId}` : '')
+    ),
 };
 
 export interface Portfolio {

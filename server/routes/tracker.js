@@ -2,6 +2,7 @@ const router         = require('express').Router();
 const authMiddleware = require('../middleware/auth');
 const Position       = require('../models/Position');
 const { fetchPrice, fetchPrices } = require('../services/priceService');
+const { recalculatePosition }     = require('../services/positionService');
 
 // All routes require authentication
 router.use(authMiddleware);
@@ -30,6 +31,20 @@ router.get('/', async (req, res) => {
         return p;
       })
     );
+
+    // Backfill totalInvested for any Transactions-mode positions that pre-date
+    // the totalInvested field (stored as 0 but have realizedGain populated).
+    const needsBackfill = updated.filter(
+      p => p.entryMethod === 'Transactions' && p.totalInvested === 0 && p.realizedGain !== 0
+    );
+    if (needsBackfill.length > 0) {
+      const backfilled = await Promise.all(
+        needsBackfill.map(p => recalculatePosition(p._id, req.user.id))
+      );
+      const backfillMap = new Map(backfilled.filter(Boolean).map(p => [p._id.toString(), p]));
+      const final = updated.map(p => backfillMap.get(p._id.toString()) ?? p);
+      return res.json(final);
+    }
 
     res.json(updated);
   } catch (err) {
