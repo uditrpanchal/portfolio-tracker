@@ -12,6 +12,7 @@ const positionSchema = new mongoose.Schema(
     entryMethod:   { type: String, enum: ['Manual', 'Transactions'], default: 'Manual' },
     realizedGain:  { type: Number, default: 0 },
     totalDividends:{ type: Number, default: 0 },
+    totalInvested: { type: Number, default: 0 },
   },
   { timestamps: true }
 );

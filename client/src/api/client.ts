@@ -119,6 +119,7 @@ export interface Position {
   entryMethod?: 'Manual' | 'Transactions';
   realizedGain?: number;
   totalDividends?: number;
+  totalInvested?: number;
 }
 
 export interface PositionInput {

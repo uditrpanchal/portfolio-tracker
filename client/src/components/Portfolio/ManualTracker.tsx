@@ -77,7 +77,8 @@ function derive(p: Position): Derived {
   const costBasis = p.shares * p.purchasePrice;
   const marketValue = p.shares * p.currentPrice;
   const totalReturnCAD = marketValue - costBasis + (p.realizedGain || 0) + (p.totalDividends || 0);
-  const totalReturnPct = costBasis !== 0 ? (totalReturnCAD / costBasis) * 100 : 0;
+  const denominator = (p.totalInvested != null && p.totalInvested > 0) ? p.totalInvested : costBasis;
+  const totalReturnPct = denominator !== 0 ? (totalReturnCAD / denominator) * 100 : 0;
   return { ...p, costBasis, marketValue, totalReturnCAD, totalReturnPct };
 }
 
@@ -327,21 +328,24 @@ export default function ManualTracker() {
 
   const derived = useMemo(() => filteredPositions.map(derive), [filteredPositions]);
   const totals  = useMemo(() => {
-    const cost = derived.reduce((s,p) => s+p.costBasis, 0);
-    const mval = derived.reduce((s,p) => s+p.marketValue, 0);
-    const ret  = mval - cost;
-    return { cost, mval, ret, retPct: cost!==0 ? (ret/cost)*100 : 0 };
+    const cost     = derived.reduce((s,p) => s+p.costBasis, 0);
+    const mval     = derived.reduce((s,p) => s+p.marketValue, 0);
+    const ret      = derived.reduce((s,p) => s+p.totalReturnCAD, 0);
+    const invested = derived.reduce((s,p) => s + ((p.totalInvested != null && p.totalInvested > 0) ? p.totalInvested : p.costBasis), 0);
+    return { cost, mval, ret, retPct: invested !== 0 ? (ret/invested)*100 : 0 };
   }, [derived]);
 
   /* ── per-currency subtotals (All tab only) ── */
   const allCurrencyTotals = useMemo(() => {
-    if (activePortfolio !== null) return {} as Record<string, { cost: number; mval: number }>;
-    const result: Record<string, { cost: number; mval: number }> = {};
+    if (activePortfolio !== null) return {} as Record<string, { cost: number; mval: number; ret: number; invested: number }>;
+    const result: Record<string, { cost: number; mval: number; ret: number; invested: number }> = {};
     for (const p of derived) {
       const cur = currencyOf(p.portfolioId);
-      if (!result[cur]) result[cur] = { cost: 0, mval: 0 };
-      result[cur].cost += p.costBasis;
-      result[cur].mval += p.marketValue;
+      if (!result[cur]) result[cur] = { cost: 0, mval: 0, ret: 0, invested: 0 };
+      result[cur].cost     += p.costBasis;
+      result[cur].mval     += p.marketValue;
+      result[cur].ret      += p.totalReturnCAD;
+      result[cur].invested += (p.totalInvested != null && p.totalInvested > 0) ? p.totalInvested : p.costBasis;
     }
     return result;
   }, [derived, activePortfolio, currencyOf]);
@@ -354,17 +358,19 @@ export default function ManualTracker() {
     for (const targetCur of targetCurrencies) {
       const toRate = fxRates[targetCur];
       if (toRate === undefined) continue;
-      let cost = 0, mval = 0, valid = true;
+      let cost = 0, mval = 0, totalReturn = 0, invested = 0, valid = true;
       for (const p of derived) {
         const fromCur  = currencyOf(p.portfolioId);
         const fromRate = fxRates[fromCur];
         if (fromRate === undefined) { valid = false; break; }
-        cost += (p.costBasis   / fromRate) * toRate;
-        mval += (p.marketValue / fromRate) * toRate;
+        const conv = 1 / fromRate * toRate;
+        cost        += p.costBasis * conv;
+        mval        += p.marketValue * conv;
+        totalReturn += p.totalReturnCAD * conv;
+        invested    += ((p.totalInvested != null && p.totalInvested > 0) ? p.totalInvested : p.costBasis) * conv;
       }
       if (!valid) continue;
-      const ret = mval - cost;
-      result.push({ currency: targetCur, cost, mval, ret, retPct: cost !== 0 ? (ret / cost) * 100 : 0 });
+      result.push({ currency: targetCur, cost, mval, ret: totalReturn, retPct: invested !== 0 ? (totalReturn / invested) * 100 : 0 });
     }
     return result;
   }, [derived, allCurrencyTotals, fxRates, activePortfolio, currencyOf]);
@@ -382,11 +388,13 @@ export default function ManualTracker() {
         const marketValue    = existing.marketValue + p.marketValue;
         const realizedGain   = (existing.realizedGain || 0) + (p.realizedGain || 0);
         const totalDividends = (existing.totalDividends || 0) + (p.totalDividends || 0);
+        const totalInvested  = (existing.totalInvested || 0) + (p.totalInvested || 0);
         const totalReturnCAD = marketValue - costBasis + realizedGain + totalDividends;
-        const totalReturnPct = costBasis !== 0 ? (totalReturnCAD / costBasis) * 100 : 0;
+        const denominator    = totalInvested > 0 ? totalInvested : costBasis;
+        const totalReturnPct = denominator !== 0 ? (totalReturnCAD / denominator) * 100 : 0;
         const purchasePrice  = shares > 0 ? costBasis / shares : 0;
         const currentPrice   = shares > 0 ? marketValue / shares : p.currentPrice;
-        map.set(p.ticker, { ...existing, shares, costBasis, marketValue, totalReturnCAD, totalReturnPct, purchasePrice, currentPrice, realizedGain, totalDividends });
+        map.set(p.ticker, { ...existing, shares, costBasis, marketValue, totalReturnCAD, totalReturnPct, purchasePrice, currentPrice, realizedGain, totalDividends, totalInvested });
       }
     }
     return [...map.values()];
@@ -786,8 +794,8 @@ export default function ManualTracker() {
                   <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:fxError ? 6 : 0 }}>
                     {Object.entries(allCurrencyTotals).map(([cur, vals]) => {
                       const { fmtMoney: fmt } = makeFmt(cur);
-                      const ret = vals.mval - vals.cost;
-                      const retPct = vals.cost !== 0 ? (ret / vals.cost) * 100 : 0;
+                      const ret = vals.ret;
+                      const retPct = vals.invested !== 0 ? (ret / vals.invested) * 100 : 0;
                       return (
                         <div key={cur} style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.09)', borderRadius:12, padding:'12px 18px', minWidth:180 }}>
                           <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6 }}>
@@ -837,8 +845,7 @@ export default function ManualTracker() {
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
           {(grandTotals.length > 0 ? grandTotals
             : Object.entries(allCurrencyTotals).map(([cur, vals]) => {
-                const ret = vals.mval - vals.cost;
-                return { currency: cur, cost: vals.cost, mval: vals.mval, ret, retPct: vals.cost !== 0 ? (ret / vals.cost) * 100 : 0 };
+                return { currency: cur, cost: vals.cost, mval: vals.mval, ret: vals.ret, retPct: vals.invested !== 0 ? (vals.ret / vals.invested) * 100 : 0 };
               })
           ).map(gt => {
             const fmt = makeFmt(gt.currency).fmtMoney;

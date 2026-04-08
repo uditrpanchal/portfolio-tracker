@@ -16,11 +16,13 @@ async function recalculatePosition(positionId, userId) {
   let totalCost = 0;
   let realizedGain = 0;
   let totalDividends = 0;
+  let totalInvested = 0;
 
   for (const tx of txs) {
     if (tx.type === 'Buy') {
       shares += tx.shares;
       totalCost += tx.shares * tx.price;
+      totalInvested += tx.shares * tx.price;
     } else if (tx.type === 'Sell') {
       if (shares > 0) {
         const avgCost = totalCost / shares;
@@ -47,6 +49,7 @@ async function recalculatePosition(positionId, userId) {
   position.purchasePrice = shares > 0 ? (totalCost / shares) : 0;
   position.realizedGain = realizedGain;
   position.totalDividends = totalDividends;
+  position.totalInvested = totalInvested;
   await position.save();
   return position;
 }
